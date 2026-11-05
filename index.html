@@ -96,6 +96,9 @@ legend{font-weight:700;font-size:14px;padding:0 6px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;z-index:40;font-size:14px;max-width:90vw}
 .confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dl{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.codebox{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.codebox input{max-width:220px}
+.linkbtn{border:none;background:none;color:var(--accent);padding:0 4px;min-height:auto;font-weight:600;text-decoration:underline;font-size:13px}
 @media (prefers-reduced-motion:no-preference){.panel{animation:slide .18s ease-out}@keyframes slide{from{transform:translateX(24px);opacity:.6}}}
 </style>
 
@@ -103,7 +106,8 @@ legend{font-weight:700;font-size:14px;padding:0 6px}
   <header class="top">
     <div>
       <h1>สำรวจเครื่องกำเนิดไฟฟ้า</h1>
-      <p class="sub">ทุ่งมหาเมฆ · สุวรรณภูมิ · ดอนเมือง · ไม่ต้องล็อกอิน ข้อมูลและรูปเก็บในเครื่องนี้</p>
+      <p class="sub" id="modeText">ทุ่งมหาเมฆ · สุวรรณภูมิ · ดอนเมือง · ไม่ต้องล็อกอิน ข้อมูลและรูปเก็บในเครื่องนี้</p>
+      <p class="sub"><span id="sync">กำลังโหลด…</span> <button type="button" id="btnRefresh" class="linkbtn">รีเฟรช</button></p>
     </div>
     <div class="actions">
       <button id="btnAdd" class="primary" type="button">+ เพิ่มเครื่อง</button>
@@ -113,6 +117,15 @@ legend{font-weight:700;font-size:14px;padding:0 6px}
   </header>
 
   <div id="banner" class="banner" hidden></div>
+  <form id="codeBox" class="banner codebox" hidden>
+    <label for="codeIn">ใส่รหัสทีมเพื่อดูและแก้ไขข้อมูล</label>
+    <input id="codeIn" type="password" autocomplete="off" placeholder="รหัสทีม">
+    <button type="submit" class="primary">ยืนยัน</button>
+  </form>
+  <div id="migrateBox" class="banner codebox" hidden>
+    <span>เครื่องนี้มีข้อมูลที่กรอกไว้ก่อนหน้า <b id="migrateCount">0</b> เครื่อง (ยังไม่อยู่ในระบบกลาง)</span>
+    <button type="button" id="btnMigrate" class="primary">ย้ายขึ้นระบบกลาง</button>
+  </div>
 
   <section class="stats" aria-label="สรุป">
     <div class="stat"><div class="k">จำนวนเครื่อง</div><div class="v" id="sCount">–</div></div>
@@ -130,7 +143,7 @@ legend{font-weight:700;font-size:14px;padding:0 6px}
 
   <section class="card" aria-labelledby="hTeam">
     <h2 id="hTeam">ทำงานเป็นทีม: สำรองและรวมข้อมูล</h2>
-    <p class="note">ข้อมูลอยู่ในเบราว์เซอร์ของเครื่องที่กรอก ผู้สำรวจแต่ละคนกด “สำรองข้อมูล” แล้วส่งไฟล์ .json (มีรูปถ่ายอยู่ในไฟล์) ให้ผู้รวบรวม ผู้รวบรวมกด “รวมข้อมูลจากไฟล์” เลือกได้หลายไฟล์ ระบบเก็บฉบับที่แก้ไขล่าสุดของแต่ละเครื่อง</p>
+    <p class="note" id="teamNote">ข้อมูลอยู่ในเบราว์เซอร์ของเครื่องที่กรอก ผู้สำรวจแต่ละคนกด “สำรองข้อมูล” แล้วส่งไฟล์ .json (มีรูปถ่ายอยู่ในไฟล์) ให้ผู้รวบรวม ผู้รวบรวมกด “รวมข้อมูลจากไฟล์” เลือกได้หลายไฟล์ ระบบเก็บฉบับที่แก้ไขล่าสุดของแต่ละเครื่อง</p>
     <div class="actions">
       <button type="button" id="btnBackup">สำรองข้อมูล (.json)</button>
       <label class="btn" for="fImport">รวมข้อมูลจากไฟล์…</label>
@@ -208,7 +221,9 @@ function openDB(){return new Promise(res=>{try{const r=indexedDB.open("gensurvey
   r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains("rec"))d.createObjectStore("rec");if(!d.objectStoreNames.contains("ph"))d.createObjectStore("ph")};
   r.onsuccess=()=>res(r.result);r.onerror=()=>res(null);r.onblocked=()=>res(null)}catch(_){res(null)}})}
 function tx(store,mode,fn){return new Promise((res,rej)=>{const t=idb.transaction(store,mode);const s=t.objectStore(store);const out=fn(s);t.oncomplete=()=>res(out&&out.result!==undefined?out.result:out);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error)})}
-const S={
+const LOCAL={
+  async addPh(blob){const id="p"+uid();await this.putPh(id,blob);return id},
+  phURL:null,
   async all(){if(!idb)return [...mem.rec.values()];return new Promise((res,rej)=>{const out=[];const t=idb.transaction("rec");const c=t.objectStore("rec").openCursor();c.onsuccess=()=>{const cur=c.result;if(cur){out.push(cur.value);cur.continue()}else res(out)};c.onerror=()=>rej(c.error)})},
   async put(r){if(!idb){mem.rec.set(r.id,r);return}await tx("rec","readwrite",s=>s.put(r,r.id))},
   async del(id){if(!idb){mem.rec.delete(id);return}await tx("rec","readwrite",s=>s.delete(id))},
@@ -217,8 +232,38 @@ const S={
   async delPh(id){if(!idb){mem.ph.delete(id);return}await tx("ph","readwrite",s=>s.delete(id))},
   async clear(){if(!idb){mem.rec.clear();mem.ph.clear();return}await tx("rec","readwrite",s=>s.clear());await tx("ph","readwrite",s=>s.clear())}
 };
+// ---------- shared server (Google Apps Script web app)
+const API_URL="";   // ใส่ URL ของ Web app หลัง deploy
+let teamCode="";try{teamCode=localStorage.getItem("gensurvey-code")||""}catch(_){}
+class ApiError extends Error{constructor(code,extra){super(code);this.code=code;this.extra=extra}}
+async function api(action,params,post){
+  let res;
+  try{
+    if(post) res=await fetch(API_URL,{method:"POST",body:JSON.stringify({action,code:teamCode,...params})});
+    else res=await fetch(API_URL+"?"+new URLSearchParams({action,code:teamCode,...(params||{})}));
+  }catch(_){throw new ApiError("network")}
+  let j;try{j=await res.json()}catch(_){throw new ApiError("bad_response")}
+  if(!j.ok){if(j.error==="bad_code")askCode();throw new ApiError(j.error,j)}
+  return j;
+}
+const REMOTE={
+  cache:[],
+  async all(){const j=await api("list");this.cache=j.records||[];return this.cache},
+  async put(r,opts){const j=await api("save",{record:r,base:opts&&opts.base,force:!!(opts&&opts.force),keepTime:!!(opts&&opts.keepTime)},true);return j.record},
+  async del(id){await api("delete",{id},true)},
+  async addPh(blob){const data=await blobToB64(blob);const j=await api("upload",{data,mime:"image/jpeg",name:`photo_${Date.now()}.jpg`},true);return j.id},
+  async getPh(id){const j=await api("photo",{id});return b64ToBlob(j.data)},
+  async delPh(id){try{await api("deletePhoto",{id},true)}catch(_){}},
+  phURL(id){return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w800`}
+};
+let S=LOCAL; const SHARED=!!API_URL;
 const urlCache=new Map();
-async function phURL(id){if(urlCache.has(id))return urlCache.get(id);const b=await S.getPh(id);if(!b)return "";const u=URL.createObjectURL(b);urlCache.set(id,u);return u}
+async function phURL(id){if(urlCache.has(id))return urlCache.get(id);
+  if(S.phURL){const u=S.phURL(id);urlCache.set(id,u);return u}
+  const b=await S.getPh(id);if(!b)return "";const u=URL.createObjectURL(b);urlCache.set(id,u);return u}
+async function phFallback(img){ // Drive thumbnail blocked: load through the server
+  if(img.dataset.fb)return;img.dataset.fb="1";
+  try{const b=await S.getPh(img.dataset.ph);const u=URL.createObjectURL(b);urlCache.set(img.dataset.ph,u);img.src=u}catch(_){}}
 
 let rows=[]; let site="ทั้งหมด"; let q=""; let editing=null; let downloads=null;
 const $=s=>document.querySelector(s);
@@ -231,7 +276,17 @@ function completeness(d){const n=REQ.filter(k=>filled(d,k)).length;return {n,of:
 function sorted(){const o=s=>{const i=SITES.indexOf(s);return i<0?9:i};return rows.slice().sort((a,b)=>o(a.site)-o(b.site)||String(a.building||"").localeCompare(String(b.building||""),"th")||String(a.code||"").localeCompare(String(b.code||""),"th"))}
 function visible(){const ql=q.trim().toLowerCase();return sorted().filter(r=>(site==="ทั้งหมด"||r.site===site)&&(!ql||F.some(f=>String(r[f[0]]??"").toLowerCase().includes(ql))))}
 
-async function reload(){rows=await S.all();render()}
+let lastSync=null,loadError=false,seedTried=false;
+async function reload(){
+  try{rows=await S.all();loadError=false;lastSync=new Date();
+    if(SHARED&&!rows.length&&!seedTried){seedTried=true;for(const r of seedRecords())await S.put(r,{force:true,keepTime:true});rows=await S.all()}}
+  catch(e){loadError=true;if(e.code!=="bad_code")toast(e.code==="network"?"เชื่อมต่อระบบกลางไม่ได้ ตรวจสอบอินเทอร์เน็ต":"โหลดข้อมูลไม่สำเร็จ")}
+  render();syncStatus();
+}
+function syncStatus(){const el=$("#sync");if(!el)return;
+  if(!SHARED){el.textContent="โหมดเก็บในเครื่อง";return}
+  el.textContent=loadError?"เชื่อมต่อระบบกลางไม่ได้":lastSync?`ข้อมูลกลาง · อัปเดต ${lastSync.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"})}`:"กำลังโหลด…"}
+function askCode(){const z=$("#codeBox");if(!z)return;z.hidden=false;setTimeout(()=>$("#codeIn")?.focus(),50)}
 function render(){
   const all=["ทั้งหมด",...SITES];
   $("#tabs").innerHTML=all.map(s=>{const n=s==="ทั้งหมด"?rows.length:rows.filter(r=>r.site===s).length;return `<button type="button" class="tab" aria-pressed="${s===site}" data-s="${esc(s)}">${esc(s)} <span class="n">${n}</span></button>`}).join("");
@@ -253,7 +308,7 @@ function render(){
     </button>`}).join("");
   fillImgs(L);
 }
-async function fillImgs(root){for(const img of root.querySelectorAll("img[data-ph]")){const u=await phURL(img.dataset.ph);if(u)img.src=u}}
+async function fillImgs(root){for(const img of root.querySelectorAll("img[data-ph]")){if(SHARED)img.onerror=()=>phFallback(img);img.referrerPolicy="no-referrer";const u=await phURL(img.dataset.ph);if(u)img.src=u}}
 
 // ---------- editor
 function fieldHTML(f,d){
@@ -287,7 +342,7 @@ function readForm(){const d=editing.data;const fd=new FormData($("#form"));
   for(const f of F){const k=f[0];let v=fd.get(k);if(v===null)continue;v=String(v).trim();d[k]=NUM.has(k)?(v===""?"":Number(v)):v}return d}
 function openEditor(id){
   const r=id?rows.find(x=>x.id===id):null;
-  editing={exists:!!r,data:r?JSON.parse(JSON.stringify(r)):{id:uid(),site:site!=="ทั้งหมด"?site:SITES[0],photos:[]},added:[]};
+  editing={exists:!!r,data:r?JSON.parse(JSON.stringify(r)):{id:uid(),site:site!=="ทั้งหมด"?site:SITES[0],photos:[]},added:[],base:r?r.updatedAt||"":null,force:false};
   $("#edTitle").textContent=r?`${r.building||"เครื่อง"}${r.code?" · "+r.code:""}`:"เพิ่มเครื่องใหม่";
   buildForm();$("#sheet").hidden=false;document.body.style.overflow="hidden";
 }
@@ -295,18 +350,29 @@ async function closeEditor(discard){
   if(editing&&discard&&!editing.exists){for(const id of editing.added)await S.delPh(id).catch(()=>{})}
   $("#sheet").hidden=true;document.body.style.overflow="";editing=null;
 }
+async function persist(d){ // write the record being edited; keeps editing.base in step with the server
+  const r=await S.put(d,{base:editing.base,force:editing.force});
+  if(r&&r.updatedAt){d.updatedAt=r.updatedAt;editing.base=r.updatedAt}
+  editing.exists=true;editing.force=false;
+}
 async function save(){
   const d=readForm();d.updatedAt=new Date().toISOString();if(!d.createdAt)d.createdAt=d.updatedAt;
-  try{await S.put(d);editing.exists=true;toast("บันทึกแล้ว");await closeEditor(false);await reload()}catch(_){toast("บันทึกไม่สำเร็จ พื้นที่เก็บข้อมูลในเครื่องอาจเต็ม")}
+  const btn=$("#btnSave");btn.disabled=true;
+  try{await persist(d);toast(SHARED?"บันทึกขึ้นระบบกลางแล้ว":"บันทึกแล้ว");await closeEditor(false);await reload()}
+  catch(e){
+    if(e.code==="conflict"){editing.force=true;toast("มีคนอื่นบันทึกเครื่องนี้ระหว่างที่คุณแก้ไข · ตรวจข้อมูลแล้วกดบันทึกอีกครั้งเพื่อบันทึกทับ")}
+    else if(e.code==="bad_code")toast("ใส่รหัสทีมก่อนบันทึก");
+    else toast(SHARED?"บันทึกไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่":"บันทึกไม่สำเร็จ พื้นที่เก็บข้อมูลในเครื่องอาจเต็ม")}
+  finally{btn.disabled=false}
 }
 async function shrink(file,max,q){try{const bmp=await createImageBitmap(file);const s=Math.min(1,max/Math.max(bmp.width,bmp.height));
   const c=document.createElement("canvas");c.width=Math.round(bmp.width*s);c.height=Math.round(bmp.height*s);c.getContext("2d").drawImage(bmp,0,0,c.width,c.height);
   return await new Promise(r=>c.toBlob(b=>r(b||file),"image/jpeg",q))}catch(_){return file}}
 async function addPhotos(files,type){
   readForm();let ok=0;toast(`กำลังเพิ่ม ${files.length} รูป…`);
-  for(const f of files){try{const b=await shrink(f,1600,.82);const id="p"+uid();await S.putPh(id,b);editing.added.push(id);
-    editing.data.photos.push({id,type:type||"อื่น ๆ"});ok++}catch(_){}}
-  if(editing.exists){editing.data.updatedAt=new Date().toISOString();await S.put(editing.data);await reload()}
+  for(const f of files){try{const b=await shrink(f,SHARED?1280:1600,.8);const id=await S.addPh(b);editing.added.push(id);
+    editing.data.photos.push({id,type:type||"อื่น ๆ"});ok++}catch(e){if(e.code!=="bad_code")toast("อัปโหลดรูปไม่สำเร็จ")}}
+  if(editing.exists&&ok){try{editing.data.updatedAt=new Date().toISOString();await persist(editing.data);reload()}catch(_){toast("เพิ่มรูปแล้ว แต่ยังไม่ได้บันทึกรายการ กดบันทึก")}}
   buildForm();toast(`เพิ่มรูปแล้ว ${ok} รูป${editing.exists?"":" · กดบันทึกเพื่อเก็บรายการ"}`);
 }
 
@@ -393,19 +459,36 @@ async function backup(){
   const payload={app:"gensurvey",version:1,exportedAt:new Date().toISOString(),records:recs,photos};
   await deliver(new Blob([JSON.stringify(payload)],{type:"application/json"}),`สำรองข้อมูลสำรวจ_${stamp()}.json`);
 }
+// merge records into the current store; photos are re-added through S.addPh so they land where S keeps them
+async function mergeRecords(recs,getBlob,stat){
+  const cur=new Map((await S.all()).map(r=>[r.id,r]));
+  const keyOf=p=>p.orig||p.id;
+  async function copyPhotos(list){const out=[];for(const p of list){try{const b=await getBlob(p.id);if(!b)continue;const id=await S.addPh(b);out.push({id,type:p.type,orig:keyOf(p)})}catch(_){}}return out}
+  for(const r0 of recs){if(!r0||!r0.id)continue;const r=JSON.parse(JSON.stringify(r0));const old=cur.get(r.id);
+    const have=new Set((old?old.photos||[]:[]).map(keyOf));const incoming=(r.photos||[]).filter(p=>!have.has(keyOf(p)));
+    if(old&&String(old.updatedAt||"")>=String(r.updatedAt||"")){
+      if(!incoming.length){stat.skipped++;continue}
+      old.photos=[...(old.photos||[]),...await copyPhotos(incoming)];await S.put(old,{force:true});stat.updated++;continue}
+    const keep=old?(old.photos||[]).filter(p=>!(r.photos||[]).some(q=>keyOf(q)===keyOf(p))):[];
+    const already=old?(old.photos||[]).filter(p=>(r.photos||[]).some(q=>keyOf(q)===keyOf(p))):[];
+    r.photos=[...already,...keep,...await copyPhotos(incoming)];
+    await S.put(r,{force:true,keepTime:true});old?stat.updated++:stat.added++}
+}
 async function importFiles(files){
-  let added=0,updated=0,skipped=0,bad=0;
+  const stat={added:0,updated:0,skipped:0};let bad=0;toast("กำลังรวมข้อมูล…");
   for(const f of files){try{const j=JSON.parse(await f.text());if(j.app!=="gensurvey"||!Array.isArray(j.records)){bad++;continue}
-    const cur=new Map((await S.all()).map(r=>[r.id,r]));
-    for(const r of j.records){if(!r||!r.id)continue;const old=cur.get(r.id);
-      if(old&&String(old.updatedAt||"")>=String(r.updatedAt||"")){
-        // keep newer local record but add photos it lacks
-        const have=new Set((old.photos||[]).map(p=>p.id));const extra=(r.photos||[]).filter(p=>!have.has(p.id));
-        if(extra.length){old.photos=[...(old.photos||[]),...extra];for(const p of extra)if(j.photos&&j.photos[p.id])await S.putPh(p.id,b64ToBlob(j.photos[p.id]));await S.put(old);updated++}else skipped++;continue}
-      for(const p of (r.photos||[]))if(j.photos&&j.photos[p.id])await S.putPh(p.id,b64ToBlob(j.photos[p.id]));
-      await S.put(r);old?updated++:added++}
-  }catch(_){bad++}}
-  await reload();toast(`รวมข้อมูลแล้ว: เพิ่ม ${added} · อัปเดต ${updated} · ไม่เปลี่ยน ${skipped}${bad?` · ไฟล์อ่านไม่ได้ ${bad}`:""}`);
+    await mergeRecords(j.records,async id=>j.photos&&j.photos[id]?b64ToBlob(j.photos[id]):null,stat)}catch(_){bad++}}
+  await reload();toast(`รวมข้อมูลแล้ว: เพิ่ม ${stat.added} · อัปเดต ${stat.updated} · ไม่เปลี่ยน ${stat.skipped}${bad?` · ไฟล์อ่านไม่ได้ ${bad}`:""}`);
+}
+// records typed into this browser before the shared server existed
+async function localSurveyed(){if(!idb)return [];const all=await LOCAL.all();return all.filter(r=>String(r.updatedAt||"")>"2000-01-02")}
+async function migrateLocal(){
+  const btn=$("#btnMigrate");btn.disabled=true;toast("กำลังย้ายข้อมูลขึ้นระบบกลาง…");
+  const stat={added:0,updated:0,skipped:0};
+  try{await mergeRecords(await localSurveyed(),id=>LOCAL.getPh(id),stat);
+    try{localStorage.setItem("gensurvey-migrated","1")}catch(_){}
+    $("#migrateBox").hidden=true;await reload();toast(`ย้ายขึ้นระบบกลางแล้ว: เพิ่ม ${stat.added} · อัปเดต ${stat.updated} · ไม่เปลี่ยน ${stat.skipped}`)}
+  catch(_){toast("ย้ายข้อมูลไม่สำเร็จ ลองใหม่อีกครั้ง")}finally{btn.disabled=false}
 }
 function b64ToBlob(b){const s=atob(b);const a=new Uint8Array(s.length);for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return new Blob([a],{type:"image/jpeg"})}
 
@@ -430,15 +513,31 @@ $("#form").addEventListener("click",async e=>{
   const del=e.target.closest("[data-del]");
   if(del){if(del.dataset.armed!=="1"){del.dataset.armed="1";del.textContent="กดอีกครั้งเพื่อยืนยัน";return}
     readForm();const [p]=editing.data.photos.splice(+del.dataset.del,1);
-    if(editing.exists){await S.put(editing.data);await S.delPh(p.id);await reload()}else await S.delPh(p.id);
+    try{if(editing.exists){await persist(editing.data);reload()}await S.delPh(p.id)}catch(_){toast("ลบรูปไม่สำเร็จ");editing.data.photos.splice(+del.dataset.del,0,p);buildForm();return}
     buildForm();toast("ลบรูปแล้ว");return}
   if(e.target.id==="btnDel"){$("#delZone").innerHTML=`<span>ลบเครื่องนี้และรูปทั้งหมด?</span><button type="button" class="danger" id="btnDelYes">ยืนยันลบ</button><button type="button" id="btnDelNo">ยกเลิก</button>`;return}
   if(e.target.id==="btnDelNo"){buildForm();return}
-  if(e.target.id==="btnDelYes"){const d=editing.data;await S.del(d.id);for(const p of d.photos||[])await S.delPh(p.id).catch(()=>{});await closeEditor(false);await reload();toast("ลบเครื่องแล้ว")}
+  if(e.target.id==="btnDelYes"){const d=editing.data;try{await S.del(d.id)}catch(_){toast("ลบไม่สำเร็จ");return}
+    for(const p of d.photos||[])await S.delPh(p.id).catch(()=>{});await closeEditor(false);await reload();toast("ลบเครื่องแล้ว")}
 });
 
 // ---------- boot
+$("#btnRefresh").addEventListener("click",()=>reload().then(()=>toast("อัปเดตข้อมูลแล้ว")));
+$("#btnMigrate").addEventListener("click",migrateLocal);
+$("#codeBox").addEventListener("submit",e=>{e.preventDefault();teamCode=$("#codeIn").value.trim();try{localStorage.setItem("gensurvey-code",teamCode)}catch(_){}$("#codeBox").hidden=true;reload()});
+function seedRecords(){const now=new Date().toISOString();return SEED.map(([id,s,bld,code,x])=>({id,site:s,building:bld,code,photos:[],...x,createdAt:now,updatedAt:"2000-01-01T00:00:00.000Z"}))}
+async function bootShared(){
+  S=REMOTE;$("#modeText").textContent="ทุ่งมหาเมฆ · สุวรรณภูมิ · ดอนเมือง · ไม่ต้องล็อกอิน ข้อมูลกลาง ทุกคนเห็นชุดเดียวกัน";
+  $("#teamNote").textContent="ข้อมูลและรูปเก็บที่ระบบกลาง (Google Sheets + Google Drive) ทุกคนที่เปิดลิงก์เห็นข้อมูลชุดเดียวกัน หน้านี้อัปเดตเองทุก 30 วินาที · ยังสำรองเป็นไฟล์ หรือรวมไฟล์สำรองจากที่อื่นเข้าระบบกลางได้";
+  idb=await openDB();
+  await reload();
+  try{if(localStorage.getItem("gensurvey-migrated")!=="1"){const loc=await localSurveyed();if(loc.length){$("#migrateCount").textContent=loc.length;$("#migrateBox").hidden=false}}}catch(_){}
+  setInterval(()=>{if(document.visibilityState==="visible"&&$("#sheet").hidden)reload()},30000);
+  document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&$("#sheet").hidden)reload()});
+}
 (async()=>{
+  try{if(window.claude&&window.claude.use){window.claude.use("downloads").then(d=>downloads=d)}}catch(_){}
+  if(SHARED){await bootShared();return}
   idb=await openDB();
   if(!idb){const b=$("#banner");b.textContent="เบราว์เซอร์นี้ไม่อนุญาตให้เก็บข้อมูลถาวร (อาจเป็นโหมดส่วนตัว) ข้อมูลจะหายเมื่อปิดหน้า กด “สำรองข้อมูล” ก่อนปิดทุกครั้ง";b.hidden=false}
   try{let seeded=false;try{seeded=localStorage.getItem("gensurvey-seeded")==="1"}catch(_){}
@@ -447,7 +546,6 @@ $("#form").addEventListener("click",async e=>{
       try{localStorage.setItem("gensurvey-seeded","1")}catch(_){}}
   }catch(_){}
   await reload();
-  try{if(window.claude&&window.claude.use){downloads=await window.claude.use("downloads")}}catch(_){}
 })();
 })();
 </script>

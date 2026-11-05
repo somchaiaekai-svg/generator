@@ -233,7 +233,7 @@ const LOCAL={
   async clear(){if(!idb){mem.rec.clear();mem.ph.clear();return}await tx("rec","readwrite",s=>s.clear());await tx("ph","readwrite",s=>s.clear())}
 };
 // ---------- shared server (Google Apps Script web app)
-const API_URL="";   // ใส่ URL ของ Web app หลัง deploy
+const API_URL="https://script.google.com/macros/s/AKfycbz0rv52BB5-OCHW_ZkbUFxZW_R1D6N8xbFB061CE2j89_X2_Ow31ATPeQWIXMiNGF-A/exec";   // ใส่ URL ของ Web app หลัง deploy
 let teamCode="";try{teamCode=localStorage.getItem("gensurvey-code")||""}catch(_){}
 class ApiError extends Error{constructor(code,extra){super(code);this.code=code;this.extra=extra}}
 async function api(action,params,post){

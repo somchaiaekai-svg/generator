@@ -248,7 +248,8 @@ async function api(action,params,post){
 }
 const REMOTE={
   cache:[],
-  async all(){const j=await api("list");this.cache=j.records||[];return this.cache},
+  meta:null,
+  async all(){const j=await api("list");const all=j.records||[];this.meta=all.find(r=>r&&r.id==="_meta")||null;this.cache=all.filter(r=>r&&!String(r.id).startsWith("_meta"));return this.cache},
   async put(r,opts){const j=await api("save",{record:r,base:opts&&opts.base,force:!!(opts&&opts.force),keepTime:!!(opts&&opts.keepTime)},true);return j.record},
   async del(id){await api("delete",{id},true)},
   async addPh(blob){const data=await blobToB64(blob);const j=await api("upload",{data,mime:"image/jpeg",name:`photo_${Date.now()}.jpg`},true);return j.id},
@@ -276,10 +277,20 @@ function completeness(d){const n=REQ.filter(k=>filled(d,k)).length;return {n,of:
 function sorted(){const o=s=>{const i=SITES.indexOf(s);return i<0?9:i};return rows.slice().sort((a,b)=>o(a.site)-o(b.site)||String(a.building||"").localeCompare(String(b.building||""),"th")||String(a.code||"").localeCompare(String(b.code||""),"th"))}
 function visible(){const ql=q.trim().toLowerCase();return sorted().filter(r=>(site==="ทั้งหมด"||r.site===site)&&(!ql||F.some(f=>String(r[f[0]]??"").toLowerCase().includes(ql))))}
 
-let lastSync=null,loadError=false,seedTried=false;
+let lastSync=null,loadError=false,seedRunning=false;
+// put any missing starting records on the server; a _meta row marks it done so deleted ones stay deleted
+async function ensureSeed(){
+  seedRunning=true;
+  try{const have=new Set(rows.map(r=>r.id));const todo=seedRecords().filter(r=>!have.has(r.id));let fail=0,i=0;
+    for(const r of todo){i++;toast(`กำลังใส่รายการตั้งต้น ${i}/${todo.length}…`);
+      try{await S.put(r,{force:true,keepTime:true})}catch(_){fail++}}
+    if(!fail){await S.put({id:"_meta",seeded:true,updatedAt:new Date().toISOString()},{force:true,keepTime:true});toast("ใส่รายการตั้งต้นครบแล้ว")}
+    else toast(`ใส่รายการตั้งต้นไม่ครบ ${fail} เครื่อง จะลองใหม่อัตโนมัติ`)}
+  catch(_){}finally{seedRunning=false}
+}
 async function reload(){
   try{rows=await S.all();loadError=false;lastSync=new Date();
-    if(SHARED&&!rows.length&&!seedTried){seedTried=true;for(const r of seedRecords())await S.put(r,{force:true,keepTime:true});rows=await S.all()}}
+    if(SHARED&&!REMOTE.meta&&!seedRunning){render();await ensureSeed();rows=await S.all()}}
   catch(e){loadError=true;if(e.code!=="bad_code")toast(e.code==="network"?"เชื่อมต่อระบบกลางไม่ได้ ตรวจสอบอินเทอร์เน็ต":"โหลดข้อมูลไม่สำเร็จ")}
   render();syncStatus();
 }

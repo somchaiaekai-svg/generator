@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+</head>
+<body>
+<title>สำรวจเครื่องกำเนิดไฟฟ้า</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: toolbar + site tabs, summary strip, list of generator rows; editor opens as a full-height sheet. Data lives in this device (IndexedDB). */
+:root{
+  --bg:#F3F4F1; --surface:#FFFFFF; --sunk:#E9EBE6; --line:#D5D9D1; --fg:#1D2420; --muted:#5D675F;
+  --accent:#9A6A00; --accent-bg:#FFF3D6; --ink:#24433A; --ink-fg:#F3F4F1;
+  --ok:#1F7A4D; --bad:#B42318;
+  --font:"IBM Plex Sans Thai",Tahoma,"Leelawadee UI",sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace; --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141917; --surface:#1C2320; --sunk:#232B28; --line:#34403A; --fg:#E7ECE8; --muted:#A3AFA7;
+  --accent:#F0B53A; --accent-bg:#3A2E12; --ink:#8FC7B4; --ink-fg:#102019; --ok:#6FD3A0; --bad:#F2877E; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141917; --surface:#1C2320; --sunk:#232B28; --line:#34403A; --fg:#E7ECE8; --muted:#A3AFA7;
+  --accent:#F0B53A; --accent-bg:#3A2E12; --ink:#8FC7B4; --ink-fg:#102019; --ok:#6FD3A0; --bad:#F2877E; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+img{max-width:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.5;margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px;display:flex;flex-direction:column;gap:18px}
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{margin:0;font-size:clamp(22px,3vw,28px);font-weight:700;text-wrap:balance}
+.sub{margin:2px 0 0;color:var(--muted);font-size:14px}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+button,.btn{font:inherit;font-size:14px;font-weight:600;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:9px 14px;cursor:pointer;min-height:40px;display:inline-flex;align-items:center;gap:6px}
+button:hover,.btn:hover{border-color:var(--muted)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--ink);color:var(--ink-fg);border-color:var(--ink)}
+button.danger{color:var(--bad);border-color:var(--bad)}
+button:disabled{opacity:.5;cursor:not-allowed}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{border-radius:999px;padding:6px 14px;min-height:36px;font-weight:500}
+.tab[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.tab .n{font-family:var(--mono);font-size:12px;opacity:.75}
+.toolbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:8px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.search{flex:1 1 220px;max-width:340px}
+input,select,textarea{font:inherit;font-size:15px;width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--fg);min-height:40px}
+textarea{min-height:64px;resize:vertical}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+.stat .k{font-size:12px;color:var(--muted)}
+.stat .v{font-family:var(--mono);font-size:22px;font-variant-numeric:tabular-nums}
+.stat .v small{font-family:var(--font);font-size:13px;color:var(--muted)}
+@media (max-width:640px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.list{display:flex;flex-direction:column;gap:8px}
+.row{display:grid;grid-template-columns:72px minmax(0,1.6fr) minmax(0,1fr) minmax(0,1.1fr) 120px;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;cursor:pointer;text-align:left;width:100%;font-weight:400}
+.row:hover{border-color:var(--ink)}
+.thumb{width:72px;height:56px;border-radius:6px;background:var(--sunk);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;overflow:hidden}
+.thumb img{width:100%;height:100%;object-fit:cover}
+.t1{font-weight:600}.t2{color:var(--muted);font-size:13px}
+.kva{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--sunk)}
+.prog{display:flex;flex-direction:column;gap:4px;font-size:12px}
+.bar{height:6px;background:var(--sunk);border-radius:3px;overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--accent)}
+.bar.done>i{background:var(--ok)}
+@media (max-width:760px){.row{grid-template-columns:64px minmax(0,1fr)}.row .c3,.row .c4{display:none}.row .c5{grid-column:2}.thumb{width:64px}}
+.empty{border:1px dashed var(--line);border-radius:var(--r);padding:28px;text-align:center;color:var(--muted)}
+.note{font-size:13px;color:var(--muted);margin:0}
+.banner{background:var(--accent-bg);border-radius:8px;padding:10px 12px;font-size:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.card h2{margin:0;font-size:16px}
+.sheet{position:fixed;inset:0;z-index:20;background:rgba(10,14,12,.45);display:flex;justify-content:flex-end}
+.panel{background:var(--bg);width:min(760px,100%);height:100%;overflow:auto;display:flex;flex-direction:column}
+.panel-head{position:sticky;top:0;z-index:2;background:var(--surface);border-bottom:1px solid var(--line);padding:12px max(16px,env(safe-area-inset-right,0px)) 12px 20px;padding-top:calc(12px + env(safe-area-inset-top,0px));display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.panel-head h2{margin:0;font-size:18px}
+.panel-body{padding:16px 20px 40px;display:flex;flex-direction:column;gap:16px}
+fieldset{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);padding:12px 14px 14px;margin:0;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px 12px}
+legend{font-weight:700;font-size:14px;padding:0 6px}
+.f{display:flex;flex-direction:column;gap:4px;grid-column:span 3;min-width:0}
+.f.s2{grid-column:span 2}.f.s4{grid-column:span 4}.f.s6{grid-column:span 6}
+.f label{font-size:13px;color:var(--muted)}
+.req{color:var(--accent)}
+@media (max-width:560px){.f,.f.s2,.f.s4{grid-column:span 6}}
+.photos{grid-column:span 6;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.ph{display:flex;flex-direction:column;gap:6px;background:var(--sunk);border-radius:8px;padding:6px}
+.ph img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;background:var(--line)}
+.ph select{font-size:13px;min-height:34px;padding:4px 6px}
+.ph button{font-size:12px;min-height:32px;padding:4px 8px;justify-content:center}
+.upl{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;border:1.5px dashed var(--line);border-radius:8px;min-height:150px;cursor:pointer;color:var(--muted);text-align:center;padding:8px}
+.upl:hover{border-color:var(--ink);color:var(--fg)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;z-index:40;font-size:14px;max-width:90vw}
+.confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.dl{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+@media (prefers-reduced-motion:no-preference){.panel{animation:slide .18s ease-out}@keyframes slide{from{transform:translateX(24px);opacity:.6}}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>สำรวจเครื่องกำเนิดไฟฟ้า</h1>
+      <p class="sub">ทุ่งมหาเมฆ · สุวรรณภูมิ · ดอนเมือง · ไม่ต้องล็อกอิน ข้อมูลและรูปเก็บในเครื่องนี้</p>
+    </div>
+    <div class="actions">
+      <button id="btnAdd" class="primary" type="button">+ เพิ่มเครื่อง</button>
+      <button id="btnExport" type="button">ส่งออก Excel</button>
+      <button id="btnCopy" type="button">คัดลอกตาราง</button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <section class="stats" aria-label="สรุป">
+    <div class="stat"><div class="k">จำนวนเครื่อง</div><div class="v" id="sCount">–</div></div>
+    <div class="stat"><div class="k">สำรวจครบแล้ว</div><div class="v" id="sDone">–</div></div>
+    <div class="stat"><div class="k">กำลังรวม</div><div class="v" id="sKva">–</div></div>
+    <div class="stat"><div class="k">ถังน้ำมันรวม (Day + Storage)</div><div class="v" id="sTank">–</div></div>
+  </section>
+
+  <div class="toolbar">
+    <div class="tabs" id="tabs" role="group" aria-label="เลือกพื้นที่"></div>
+    <input class="search" id="q" type="search" placeholder="ค้นหา อาคาร ยี่ห้อ รุ่น ระบบ…" aria-label="ค้นหา">
+  </div>
+
+  <div id="list" class="list" aria-live="polite"><div class="empty">กำลังโหลดรายการเครื่องกำเนิดไฟฟ้า…</div></div>
+
+  <section class="card" aria-labelledby="hTeam">
+    <h2 id="hTeam">ทำงานเป็นทีม: สำรองและรวมข้อมูล</h2>
+    <p class="note">ข้อมูลอยู่ในเบราว์เซอร์ของเครื่องที่กรอก ผู้สำรวจแต่ละคนกด “สำรองข้อมูล” แล้วส่งไฟล์ .json (มีรูปถ่ายอยู่ในไฟล์) ให้ผู้รวบรวม ผู้รวบรวมกด “รวมข้อมูลจากไฟล์” เลือกได้หลายไฟล์ ระบบเก็บฉบับที่แก้ไขล่าสุดของแต่ละเครื่อง</p>
+    <div class="actions">
+      <button type="button" id="btnBackup">สำรองข้อมูล (.json)</button>
+      <label class="btn" for="fImport">รวมข้อมูลจากไฟล์…</label>
+      <input type="file" id="fImport" accept=".json,application/json" multiple hidden>
+    </div>
+    <div id="dlArea" class="dl" hidden></div>
+  </section>
+  <p class="note">ช่องที่มี <span class="req">*</span> ใช้คำนวณความครบถ้วน · รูปถูกย่อขนาดก่อนเก็บ · Excel มี 4 แผ่น: รายการเครื่อง, สรุปตามพื้นที่, สรุปไส้กรอง และรูปถ่าย (ฝังรูปย่อ)</p>
+</div>
+
+<div id="sheet" class="sheet" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="edTitle">
+    <div class="panel-head">
+      <h2 id="edTitle">ข้อมูลเครื่อง</h2>
+      <div class="actions"><button type="button" id="btnClose">ปิด</button><button type="button" id="btnSave" class="primary">บันทึก</button></div>
+    </div>
+    <form class="panel-body" id="form" autocomplete="off"></form>
+  </div>
+</div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script>
+(function(){
+const SITES=["ทุ่งมหาเมฆ","สุวรรณภูมิ","ดอนเมือง"];
+const PHOTO_TYPES=["ภาพรวมเครื่อง","ป้ายพิกัด (Nameplate)","ป้ายพิกัด ATS","ไส้กรองอากาศ","ไส้กรองน้ำมันเครื่อง","ไส้กรองน้ำมันเชื้อเพลิง","Day tank","Storage tank","ตู้ควบคุม/ATS","อื่น ๆ"];
+const F=[
+ ["site","พื้นที่","g1","site",2,1],["building","อาคารที่ติดตั้ง","g1","text",2,1],["room","ตำแหน่ง/ห้อง","g1","text",2,0],
+ ["code","รหัส/ชื่อเครื่อง","g1","text",2,0],["brand","ยี่ห้อเครื่อง","g1","text",2,1],["model","รุ่นเครื่อง","g1","text",2,1],
+ ["kva","ขนาด (kVA)","g1","num",2,1],["year","ปีที่ติดตั้ง (พ.ศ.)","g1","num",2,1],["serial","Serial Number เครื่องกำเนิดไฟฟ้า","g1","text",2,1],
+ ["engine","ยี่ห้อ/รุ่นเครื่องยนต์","g1","text",3,0],["alternator","ยี่ห้อ/รุ่น Alternator","g1","text",3,0],
+ ["systems","จ่ายไฟให้กับระบบ","g1","area",6,1],
+ ["ats_brand","ยี่ห้อ ATS","g7","text",3,1],["ats_model","รุ่น / Model ATS","g7","text",3,1],
+ ["ats_rating","ขนาด (A)","g7","num",2,0],["ats_serial","Serial Number ATS","g7","text",4,1],
+ ["air_brand","ยี่ห้อ","g2","text",2,1],["air_model","รุ่น/Part No.","g2","text",2,1],["air_qty","จำนวน (ชิ้น)","g2","num",2,0],
+ ["oil_brand","ยี่ห้อ","g3","text",2,1],["oil_model","รุ่น/Part No.","g3","text",2,1],["oil_qty","จำนวน (ชิ้น)","g3","num",2,1],
+ ["fuel_brand","ยี่ห้อ","g4","text",2,1],["fuel_model","รุ่น/Part No.","g4","text",2,1],["fuel_qty","จำนวน (ชิ้น)","g4","num",2,0],
+ ["day_l","ขนาด Day tank (ลิตร)","g5","num",3,1],["storage_l","ขนาด Storage tank (ลิตร) ไม่มีให้ใส่ 0","g5","num",3,1],
+ ["surveyor","ผู้สำรวจ","g6","text",2,0],["survey_date","วันที่สำรวจ","g6","date",2,0],["note","หมายเหตุ","g6","area",6,0]
+];
+const GROUPS={g1:"ข้อมูลเครื่องกำเนิดไฟฟ้า",g7:"ตู้ ATS (Automatic Transfer Switch)",g2:"ไส้กรองอากาศ",g3:"ไส้กรองน้ำมันเครื่อง",g4:"ไส้กรองน้ำมันเชื้อเพลิง",g5:"ถังน้ำมัน",g6:"การสำรวจ"};
+const REQ=F.filter(f=>f[5]).map(f=>f[0]);
+const NUM=new Set(F.filter(f=>f[3]==="num").map(f=>f[0]));
+// starting list from the user's fuel-reserve workbook and Suvarnabhumi maintenance plan
+const SEED=[
+ ["tmm-p1-gen1","ทุ่งมหาเมฆ","โรงไฟฟ้า 1","Gen1",{kva:2000,note:"Storage tank โรงไฟฟ้า 1 ความจุ 10,000 ลิตร ใช้ร่วม Gen1–4"}],
+ ["tmm-p1-gen2","ทุ่งมหาเมฆ","โรงไฟฟ้า 1","Gen2",{kva:2000,note:"Storage tank โรงไฟฟ้า 1 ความจุ 10,000 ลิตร ใช้ร่วม Gen1–4"}],
+ ["tmm-p1-gen3","ทุ่งมหาเมฆ","โรงไฟฟ้า 1","Gen3",{kva:2000,note:"Storage tank โรงไฟฟ้า 1 ความจุ 10,000 ลิตร ใช้ร่วม Gen1–4"}],
+ ["tmm-p1-gen4","ทุ่งมหาเมฆ","โรงไฟฟ้า 1","Gen4",{kva:2000,note:"Storage tank โรงไฟฟ้า 1 ความจุ 10,000 ลิตร ใช้ร่วม Gen1–4"}],
+ ["tmm-p2-gen1","ทุ่งมหาเมฆ","โรงไฟฟ้า 2","Gen1",{kva:1500,storage_l:5000}],
+ ["sb-atc-1","สุวรรณภูมิ","ATC Complex (Support Building & Control Tower)","เครื่อง 1",{brand:"FG WILSON",kva:1250}],
+ ["sb-atc-2","สุวรรณภูมิ","ATC Complex (Support Building & Control Tower)","เครื่อง 2",{brand:"FG WILSON",kva:1250}],
+ ["sb-app","สุวรรณภูมิ","Bkk. Approach Control","",{brand:"CUMMINS ONAN",kva:440,day_l:600,storage_l:11000}],
+ ["sb-psr","สุวรรณภูมิ","PSR","",{brand:"FG WILSON",kva:250,day_l:200,storage_l:3000}],
+ ["sb-ssr","สุวรรณภูมิ","SSR","",{brand:"FG WILSON",kva:150,day_l:400,storage_l:2000}],
+ ["sb-smr","สุวรรณภูมิ","SMR","",{brand:"CUMMINS",kva:150,day_l:400,storage_l:2000}],
+ ["sb-tx","สุวรรณภูมิ","TX","",{brand:"CUMMINS",kva:40,day_l:200,storage_l:3000}],
+ ["sb-loc20l","สุวรรณภูมิ","LOC-20L","",{brand:"CUMMINS",kva:20,day_l:200,storage_l:2000}],
+ ["sb-loc02r","สุวรรณภูมิ","LOC-02R","",{brand:"CUMMINS",kva:20,day_l:200,storage_l:2000}],
+ ["sb-loc19","สุวรรณภูมิ","LOC-19","",{brand:"CUMMINS",kva:20,day_l:200,storage_l:2000}],
+ ["sb-loc01","สุวรรณภูมิ","LOC-01","",{brand:"CUMMINS",kva:20,day_l:200,storage_l:2000}],
+ ["dm-llz03l","ดอนเมือง","LLZ-03L","",{kva:30,day_l:200,storage_l:0}],
+ ["dm-llz21r","ดอนเมือง","LLZ-21R","",{kva:150,day_l:1000,storage_l:0}],
+ ["dm-dvor","ดอนเมือง","DVOR","",{kva:30,day_l:200,storage_l:3000}],
+ ["dm-remote","ดอนเมือง","Remote Site","",{kva:150,day_l:1000,storage_l:0}],
+ ["dm-nobreak-n","ดอนเมือง","No-Break หอฯ ทิศเหนือ","",{kva:350,day_l:2000,storage_l:0}],
+ ["dm-tower-s","ดอนเมือง","หอฯ ทิศใต้","",{kva:500,day_l:1000,storage_l:5000}],
+ ["dm-ssr-new","ดอนเมือง","SSR ใหม่","",{kva:90,day_l:200,storage_l:1500}]
+];
+
+// ---------- storage (IndexedDB, with in-memory fallback)
+let idb=null; const mem={rec:new Map(),ph:new Map()};
+function openDB(){return new Promise(res=>{try{const r=indexedDB.open("gensurvey",1);
+  r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains("rec"))d.createObjectStore("rec");if(!d.objectStoreNames.contains("ph"))d.createObjectStore("ph")};
+  r.onsuccess=()=>res(r.result);r.onerror=()=>res(null);r.onblocked=()=>res(null)}catch(_){res(null)}})}
+function tx(store,mode,fn){return new Promise((res,rej)=>{const t=idb.transaction(store,mode);const s=t.objectStore(store);const out=fn(s);t.oncomplete=()=>res(out&&out.result!==undefined?out.result:out);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error)})}
+const S={
+  async all(){if(!idb)return [...mem.rec.values()];return new Promise((res,rej)=>{const out=[];const t=idb.transaction("rec");const c=t.objectStore("rec").openCursor();c.onsuccess=()=>{const cur=c.result;if(cur){out.push(cur.value);cur.continue()}else res(out)};c.onerror=()=>rej(c.error)})},
+  async put(r){if(!idb){mem.rec.set(r.id,r);return}await tx("rec","readwrite",s=>s.put(r,r.id))},
+  async del(id){if(!idb){mem.rec.delete(id);return}await tx("rec","readwrite",s=>s.delete(id))},
+  async putPh(id,blob){if(!idb){mem.ph.set(id,blob);return}await tx("ph","readwrite",s=>s.put(blob,id))},
+  async getPh(id){if(!idb)return mem.ph.get(id);return tx("ph","readonly",s=>s.get(id))},
+  async delPh(id){if(!idb){mem.ph.delete(id);return}await tx("ph","readwrite",s=>s.delete(id))},
+  async clear(){if(!idb){mem.rec.clear();mem.ph.clear();return}await tx("rec","readwrite",s=>s.clear());await tx("ph","readwrite",s=>s.clear())}
+};
+const urlCache=new Map();
+async function phURL(id){if(urlCache.has(id))return urlCache.get(id);const b=await S.getPh(id);if(!b)return "";const u=URL.createObjectURL(b);urlCache.set(id,u);return u}
+
+let rows=[]; let site="ทั้งหมด"; let q=""; let editing=null; let downloads=null;
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=n=>(n===""||n==null||isNaN(n))?"–":Number(n).toLocaleString("th-TH");
+const uid=()=>"g"+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+function toast(t){const el=$("#toast");el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,3000)}
+function filled(d,k){const v=d[k];return !(v===undefined||v===null||v==="")}
+function completeness(d){const n=REQ.filter(k=>filled(d,k)).length;return {n,of:REQ.length,pct:Math.round(100*n/REQ.length)}}
+function sorted(){const o=s=>{const i=SITES.indexOf(s);return i<0?9:i};return rows.slice().sort((a,b)=>o(a.site)-o(b.site)||String(a.building||"").localeCompare(String(b.building||""),"th")||String(a.code||"").localeCompare(String(b.code||""),"th"))}
+function visible(){const ql=q.trim().toLowerCase();return sorted().filter(r=>(site==="ทั้งหมด"||r.site===site)&&(!ql||F.some(f=>String(r[f[0]]??"").toLowerCase().includes(ql))))}
+
+async function reload(){rows=await S.all();render()}
+function render(){
+  const all=["ทั้งหมด",...SITES];
+  $("#tabs").innerHTML=all.map(s=>{const n=s==="ทั้งหมด"?rows.length:rows.filter(r=>r.site===s).length;return `<button type="button" class="tab" aria-pressed="${s===site}" data-s="${esc(s)}">${esc(s)} <span class="n">${n}</span></button>`}).join("");
+  const v=visible();
+  $("#sCount").textContent=v.length;
+  $("#sDone").innerHTML=`${v.filter(r=>completeness(r).pct===100).length} <small>/ ${v.length}</small>`;
+  $("#sKva").innerHTML=`${fmt(v.reduce((a,r)=>a+(Number(r.kva)||0),0))} <small>kVA</small>`;
+  $("#sTank").innerHTML=`${fmt(v.reduce((a,r)=>a+(Number(r.day_l)||0)+(Number(r.storage_l)||0),0))} <small>ลิตร</small>`;
+  const L=$("#list");
+  if(!v.length){L.innerHTML=`<div class="empty">${rows.length?"ไม่พบเครื่องที่ตรงกับการค้นหา":"ยังไม่มีเครื่องในรายการ กด “+ เพิ่มเครื่อง” เพื่อเริ่มสำรวจ"}</div>`;return}
+  L.innerHTML=v.map(d=>{const c=completeness(d);const ph=(d.photos||[])[0];
+    return `<button type="button" class="row" data-id="${esc(d.id)}">
+      <span class="thumb">${ph?`<img data-ph="${esc(ph.id)}" alt="">`:"ไม่มีรูป"}</span>
+      <span style="min-width:0"><span class="t1">${esc(d.building||"(ยังไม่ระบุอาคาร)")}${d.code?` · ${esc(d.code)}`:""}</span><br>
+        <span class="t2"><span class="pill">${esc(d.site||"–")}</span> ${esc([d.brand,d.model].filter(Boolean).join(" ")||"ยังไม่ระบุยี่ห้อ/รุ่น")}</span></span>
+      <span class="c3"><span class="kva">${d.kva?fmt(d.kva)+" kVA":"– kVA"}</span><br><span class="t2">ติดตั้ง ${esc(d.year||"–")}</span></span>
+      <span class="c4 t2">Day ${fmt(d.day_l)} ล. · Storage ${fmt(d.storage_l)} ล.<br>${(d.photos||[]).length} รูป</span>
+      <span class="c5 prog"><span>${c.pct===100?"สำรวจครบ":`กรอกแล้ว ${c.n}/${c.of}`}</span><span class="bar ${c.pct===100?"done":""}"><i style="width:${c.pct}%"></i></span></span>
+    </button>`}).join("");
+  fillImgs(L);
+}
+async function fillImgs(root){for(const img of root.querySelectorAll("img[data-ph]")){const u=await phURL(img.dataset.ph);if(u)img.src=u}}
+
+// ---------- editor
+function fieldHTML(f,d){
+  const [k,label,,type,span,req]=f;const v=d[k]??"";
+  const cls=`f ${span===6?"s6":span===2?"s2":span===4?"s4":""}`;const lab=`<label for="f_${k}">${esc(label)}${req?' <span class="req">*</span>':""}</label>`;
+  if(type==="site")return `<div class="${cls}">${lab}<select id="f_${k}" name="${k}">${SITES.map(s=>`<option ${s===v?"selected":""}>${s}</option>`).join("")}</select></div>`;
+  if(type==="area")return `<div class="${cls}">${lab}<textarea id="f_${k}" name="${k}" placeholder="${k==="systems"?"เช่น ระบบเรดาร์ SSR, ระบบสื่อสาร VHF, ห้องควบคุม Approach":""}">${esc(v)}</textarea></div>`;
+  const t=type==="num"?'type="number" inputmode="decimal" min="0" step="any"':type==="date"?'type="date"':'type="text"';
+  return `<div class="${cls}">${lab}<input id="f_${k}" name="${k}" ${t} value="${esc(v)}"></div>`;
+}
+function buildForm(){
+  const d=editing.data;let html="";
+  for(const g of Object.keys(GROUPS))html+=`<fieldset><legend>${GROUPS[g]}</legend>${F.filter(f=>f[2]===g).map(f=>fieldHTML(f,d)).join("")}</fieldset>`;
+  const ps=d.photos||[];
+  html+=`<fieldset><legend>รูปถ่าย (${ps.length})</legend><div class="photos">${ps.map((p,i)=>`<div class="ph"><img data-ph="${esc(p.id)}" alt="${esc(p.type)}">
+    <select data-pi="${i}" aria-label="ประเภทรูป">${PHOTO_TYPES.map(t=>`<option ${t===p.type?"selected":""}>${t}</option>`).join("")}</select>
+    <button type="button" class="danger" data-del="${i}">ลบรูป</button></div>`).join("")}
+    <label class="upl" for="f_photo"><b>+ เพิ่มรูปถ่าย</b><span class="note">ถ่ายหรือเลือกได้หลายรูป</span></label>
+    <input id="f_photo" type="file" accept="image/*" multiple hidden></div></fieldset>`;
+  if(editing.exists)html+=`<div class="confirm" id="delZone"><button type="button" class="danger" id="btnDel">ลบเครื่องนี้</button></div>`;
+  $("#form").innerHTML=html;fillImgs($("#form"));
+}
+function readForm(){const d=editing.data;const fd=new FormData($("#form"));
+  for(const f of F){const k=f[0];let v=fd.get(k);if(v===null)continue;v=String(v).trim();d[k]=NUM.has(k)?(v===""?"":Number(v)):v}return d}
+function openEditor(id){
+  const r=id?rows.find(x=>x.id===id):null;
+  editing={exists:!!r,data:r?JSON.parse(JSON.stringify(r)):{id:uid(),site:site!=="ทั้งหมด"?site:SITES[0],photos:[]},added:[]};
+  $("#edTitle").textContent=r?`${r.building||"เครื่อง"}${r.code?" · "+r.code:""}`:"เพิ่มเครื่องใหม่";
+  buildForm();$("#sheet").hidden=false;document.body.style.overflow="hidden";
+}
+async function closeEditor(discard){
+  if(editing&&discard&&!editing.exists){for(const id of editing.added)await S.delPh(id).catch(()=>{})}
+  $("#sheet").hidden=true;document.body.style.overflow="";editing=null;
+}
+async function save(){
+  const d=readForm();d.updatedAt=new Date().toISOString();if(!d.createdAt)d.createdAt=d.updatedAt;
+  try{await S.put(d);editing.exists=true;toast("บันทึกแล้ว");await closeEditor(false);await reload()}catch(_){toast("บันทึกไม่สำเร็จ พื้นที่เก็บข้อมูลในเครื่องอาจเต็ม")}
+}
+async function shrink(file,max,q){try{const bmp=await createImageBitmap(file);const s=Math.min(1,max/Math.max(bmp.width,bmp.height));
+  const c=document.createElement("canvas");c.width=Math.round(bmp.width*s);c.height=Math.round(bmp.height*s);c.getContext("2d").drawImage(bmp,0,0,c.width,c.height);
+  return await new Promise(r=>c.toBlob(b=>r(b||file),"image/jpeg",q))}catch(_){return file}}
+async function addPhotos(files){
+  readForm();let ok=0;toast(`กำลังเพิ่ม ${files.length} รูป…`);
+  for(const f of files){try{const b=await shrink(f,1600,.82);const id="p"+uid();await S.putPh(id,b);editing.added.push(id);
+    editing.data.photos.push({id,type:PHOTO_TYPES[Math.min(editing.data.photos.length,PHOTO_TYPES.length-1)]});ok++}catch(_){}}
+  if(editing.exists){editing.data.updatedAt=new Date().toISOString();await S.put(editing.data);await reload()}
+  buildForm();toast(`เพิ่มรูปแล้ว ${ok} รูป${editing.exists?"":" · กดบันทึกเพื่อเก็บรายการ"}`);
+}
+
+// ---------- file output
+function blobToB64(b){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=rej;r.readAsDataURL(b)})}
+async function deliver(blob,name){
+  if(downloads){try{await downloads.save({filename:name,data:blob});toast("บันทึกไฟล์แล้ว");return}catch(e){if(e&&e.code==="declined")return}}
+  const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=name;a.textContent=`ดาวน์โหลด ${name}`;a.className="btn";
+  document.body.appendChild(a);a.click();a.remove();
+  const area=$("#dlArea");area.hidden=false;area.innerHTML="";const b=a.cloneNode(true);b.onclick=null;area.append(b,Object.assign(document.createElement("span"),{className:"note",textContent:"ถ้าไฟล์ไม่ดาวน์โหลดเอง ให้กดปุ่มนี้"}));
+  toast("สร้างไฟล์แล้ว");
+}
+const stamp=()=>new Date().toISOString().slice(0,10);
+const TABLE_HEAD=["ลำดับ","พื้นที่","อาคารที่ติดตั้ง","ตำแหน่ง/ห้อง","รหัส/ชื่อเครื่อง","ยี่ห้อเครื่อง","รุ่นเครื่อง","ขนาด (kVA)","ปีที่ติดตั้ง (พ.ศ.)","อายุใช้งาน (ปี)","Serial Number เครื่อง","เครื่องยนต์","Alternator",
+ "ATS ยี่ห้อ","ATS รุ่น/Model","ATS ขนาด (A)","ATS Serial Number","จ่ายไฟให้กับระบบ",
+ "ไส้กรองอากาศ ยี่ห้อ","ไส้กรองอากาศ รุ่น","ไส้กรองอากาศ จำนวน","ไส้กรองน้ำมันเครื่อง ยี่ห้อ","ไส้กรองน้ำมันเครื่อง รุ่น","ไส้กรองน้ำมันเครื่อง จำนวน",
+ "ไส้กรองน้ำมันเชื้อเพลิง ยี่ห้อ","ไส้กรองน้ำมันเชื้อเพลิง รุ่น","ไส้กรองน้ำมันเชื้อเพลิง จำนวน","Day tank (ลิตร)","Storage tank (ลิตร)","รวมถังน้ำมัน (ลิตร)","จำนวนรูป","ความครบถ้วน (%)","ผู้สำรวจ","วันที่สำรวจ","หมายเหตุ","แก้ไขล่าสุด"];
+function tableRows(data){
+  const thisBE=new Date().getFullYear()+543;const n=v=>v===""||v==null?null:Number(v);
+  return data.map((d,i)=>[i+1,d.site,d.building,d.room,d.code,d.brand,d.model,n(d.kva),n(d.year),d.year?thisBE-Number(d.year):null,d.serial,d.engine,d.alternator,
+    d.ats_brand,d.ats_model,n(d.ats_rating),d.ats_serial,d.systems,
+    d.air_brand,d.air_model,n(d.air_qty),d.oil_brand,d.oil_model,n(d.oil_qty),d.fuel_brand,d.fuel_model,n(d.fuel_qty),n(d.day_l),n(d.storage_l),(Number(d.day_l)||0)+(Number(d.storage_l)||0),
+    (d.photos||[]).length,completeness(d).pct,d.surveyor,d.survey_date,d.note,d.updatedAt?d.updatedAt.slice(0,10):""]);
+}
+function copyTable(){
+  const clean=v=>v==null?"":String(v).replace(/[\t\r\n]+/g," ");
+  const tsv=[TABLE_HEAD,...tableRows(sorted())].map(r=>r.map(clean).join("\t")).join("\n");
+  const done=()=>toast("คัดลอกตารางแล้ว เปิด Excel แล้วกด Ctrl+V");
+  const fallback=()=>{const ta=document.createElement("textarea");ta.value=tsv;ta.setAttribute("aria-label","ตารางสำหรับคัดลอก");ta.style.cssText="position:fixed;inset:20% 5% auto;height:40%;z-index:50";document.body.appendChild(ta);ta.select();
+    let ok=false;try{ok=document.execCommand("copy")}catch(_){}
+    if(ok){ta.remove();done()}else{toast("กด Ctrl+C เพื่อคัดลอก แล้วคลิกนอกกล่องเพื่อปิด");ta.addEventListener("blur",()=>ta.remove())}};
+  try{navigator.clipboard.writeText(tsv).then(done,fallback)}catch(_){fallback()}
+}
+
+async function exportExcel(){
+  if(!window.ExcelJS){toast("โหลดตัวสร้าง Excel ไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต");return}
+  const btn=$("#btnExport");btn.disabled=true;toast("กำลังสร้างไฟล์ Excel…");
+  try{
+  const data=sorted();const wb=new ExcelJS.Workbook();wb.creator="สำรวจเครื่องกำเนิดไฟฟ้า";
+  const thisBE=new Date().getFullYear()+543;const n=v=>v===""||v==null?null:Number(v);
+  const hdrStyle=row=>{row.font={bold:true,color:{argb:"FFF3F4F1"}};row.alignment={vertical:"middle",wrapText:true};row.height=36;row.eachCell(c=>{c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF24433A"}}})};
+  // 1 list
+  const ws=wb.addWorksheet("รายการเครื่อง",{views:[{state:"frozen",ySplit:4,xSplit:3}]});
+  ws.addRow(["รายการเครื่องกำเนิดไฟฟ้า ทุ่งมหาเมฆ สุวรรณภูมิ ดอนเมือง"]).font={bold:true,size:14};
+  ws.addRow([`ส่งออกเมื่อ ${new Date().toLocaleString("th-TH")}`]);ws.addRow([]);
+  const H=TABLE_HEAD;
+  hdrStyle(ws.addRow(H));
+  tableRows(data).forEach(r=>ws.addRow(r));
+  ws.columns.forEach((c,i)=>{c.width=[6,12,26,16,14,14,16,10,10,9,18,16,16,14,16,10,18,36][i]||15});
+  ws.autoFilter={from:{row:4,column:1},to:{row:4,column:H.length}};
+  [8,28,29,30].forEach(c=>ws.getColumn(c).numFmt="#,##0");
+  // 2 by site
+  const s2=wb.addWorksheet("สรุปตามพื้นที่");s2.addRow(["สรุปตามพื้นที่"]).font={bold:true,size:14};s2.addRow([]);
+  hdrStyle(s2.addRow(["พื้นที่","จำนวนเครื่อง","สำรวจครบ","กำลังรวม (kVA)","Day tank รวม (ลิตร)","Storage tank รวม (ลิตร)","รวมถังน้ำมัน (ลิตร)","จำนวนรูป"]));
+  const sum=(a,k)=>a.reduce((s,d)=>s+(Number(d[k])||0),0);
+  const line=(nm,a)=>[nm,a.length,a.filter(d=>completeness(d).pct===100).length,sum(a,"kva"),sum(a,"day_l"),sum(a,"storage_l"),sum(a,"day_l")+sum(a,"storage_l"),a.reduce((x,d)=>x+(d.photos||[]).length,0)];
+  SITES.forEach(s=>s2.addRow(line(s,data.filter(d=>d.site===s))));s2.addRow(line("รวม",data)).font={bold:true};
+  s2.columns.forEach((c,i)=>{c.width=[14,12,10,14,18,20,18,10][i];if(i>=3&&i<=6)c.numFmt="#,##0"});
+  // 3 filters
+  const s3=wb.addWorksheet("สรุปไส้กรอง");s3.addRow(["สรุปไส้กรอง (สำหรับจัดซื้อ/สำรองอะไหล่)"]).font={bold:true,size:14};
+  s3.addRow(["จำนวนชิ้นต่อการเปลี่ยน 1 ครั้ง = ผลรวมจำนวนที่กรอกของทุกเครื่อง"]);s3.addRow([]);
+  hdrStyle(s3.addRow(["ประเภท","ยี่ห้อ","รุ่น/Part No.","จำนวนเครื่องที่ใช้","จำนวนชิ้นต่อการเปลี่ยน 1 ครั้ง","พื้นที่","อาคาร"]));
+  const agg={};for(const d of data)for(const [t,p] of [["ไส้กรองอากาศ","air"],["ไส้กรองน้ำมันเครื่อง","oil"],["ไส้กรองน้ำมันเชื้อเพลิง","fuel"]]){
+    const b=d[p+"_brand"]||"",m=d[p+"_model"]||"";if(!b&&!m)continue;const k=[t,b,m].join("|");
+    const a=agg[k]||(agg[k]={t,b,m,n:0,q:0,s:new Set(),bl:new Set()});a.n++;a.q+=Number(d[p+"_qty"])||0;a.s.add(d.site);if(d.building)a.bl.add(d.building)}
+  Object.values(agg).sort((x,y)=>x.t.localeCompare(y.t,"th")||x.b.localeCompare(y.b)||x.m.localeCompare(y.m)).forEach(a=>s3.addRow([a.t,a.b,a.m,a.n,a.q,[...a.s].join(", "),[...a.bl].join(", ")]));
+  s3.columns.forEach((c,i)=>{c.width=[22,14,20,14,18,28,50][i]});
+  // 4 photos
+  const s4=wb.addWorksheet("รูปถ่าย");s4.addRow(["รูปถ่ายประกอบการสำรวจ (รูปย่อ)"]).font={bold:true,size:14};s4.addRow([]);
+  hdrStyle(s4.addRow(["ลำดับเครื่อง","พื้นที่","อาคาร","รหัส/ชื่อเครื่อง","ประเภทรูป","รูป"]));
+  s4.columns.forEach((c,i)=>{c.width=[10,12,26,14,22,34][i]});
+  let r=4;
+  for(let i=0;i<data.length;i++){const d=data[i];for(const p of (d.photos||[])){
+    const b=await S.getPh(p.id);if(!b)continue;const small=await shrink(b,480,.7);const b64=await blobToB64(small);
+    const row=s4.addRow([i+1,d.site,d.building,d.code,p.type,""]);row.height=150;row.alignment={vertical:"top",wrapText:true};
+    const img=wb.addImage({base64:b64,extension:"jpeg"});s4.addImage(img,{tl:{col:5,row:r},ext:{width:240,height:190}});r++}}
+  const buf=await wb.xlsx.writeBuffer();
+  await deliver(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),`สำรวจเครื่องกำเนิดไฟฟ้า_${stamp()}.xlsx`);
+  }catch(e){toast("สร้าง Excel ไม่สำเร็จ")}finally{btn.disabled=false}
+}
+async function backup(){
+  toast("กำลังสร้างไฟล์สำรอง…");const recs=await S.all();const photos={};
+  for(const r of recs)for(const p of (r.photos||[])){const b=await S.getPh(p.id);if(b)photos[p.id]=await blobToB64(b)}
+  const payload={app:"gensurvey",version:1,exportedAt:new Date().toISOString(),records:recs,photos};
+  await deliver(new Blob([JSON.stringify(payload)],{type:"application/json"}),`สำรองข้อมูลสำรวจ_${stamp()}.json`);
+}
+async function importFiles(files){
+  let added=0,updated=0,skipped=0,bad=0;
+  for(const f of files){try{const j=JSON.parse(await f.text());if(j.app!=="gensurvey"||!Array.isArray(j.records)){bad++;continue}
+    const cur=new Map((await S.all()).map(r=>[r.id,r]));
+    for(const r of j.records){if(!r||!r.id)continue;const old=cur.get(r.id);
+      if(old&&String(old.updatedAt||"")>=String(r.updatedAt||"")){
+        // keep newer local record but add photos it lacks
+        const have=new Set((old.photos||[]).map(p=>p.id));const extra=(r.photos||[]).filter(p=>!have.has(p.id));
+        if(extra.length){old.photos=[...(old.photos||[]),...extra];for(const p of extra)if(j.photos&&j.photos[p.id])await S.putPh(p.id,b64ToBlob(j.photos[p.id]));await S.put(old);updated++}else skipped++;continue}
+      for(const p of (r.photos||[]))if(j.photos&&j.photos[p.id])await S.putPh(p.id,b64ToBlob(j.photos[p.id]));
+      await S.put(r);old?updated++:added++}
+  }catch(_){bad++}}
+  await reload();toast(`รวมข้อมูลแล้ว: เพิ่ม ${added} · อัปเดต ${updated} · ไม่เปลี่ยน ${skipped}${bad?` · ไฟล์อ่านไม่ได้ ${bad}`:""}`);
+}
+function b64ToBlob(b){const s=atob(b);const a=new Uint8Array(s.length);for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return new Blob([a],{type:"image/jpeg"})}
+
+// ---------- events
+$("#tabs").addEventListener("click",e=>{const b=e.target.closest(".tab");if(b){site=b.dataset.s;render()}});
+$("#q").addEventListener("input",e=>{q=e.target.value;render()});
+$("#list").addEventListener("click",e=>{const r=e.target.closest(".row");if(r)openEditor(r.dataset.id)});
+$("#btnAdd").addEventListener("click",()=>openEditor(null));
+$("#btnExport").addEventListener("click",exportExcel);
+$("#btnCopy").addEventListener("click",copyTable);
+$("#btnBackup").addEventListener("click",backup);
+$("#fImport").addEventListener("change",e=>{const fs=[...e.target.files];e.target.value="";if(fs.length)importFiles(fs)});
+$("#btnClose").addEventListener("click",()=>closeEditor(true));
+$("#btnSave").addEventListener("click",save);
+$("#form").addEventListener("submit",e=>{e.preventDefault();save()});
+$("#sheet").addEventListener("click",e=>{if(e.target.id==="sheet")closeEditor(true)});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#sheet").hidden)closeEditor(true)});
+$("#form").addEventListener("change",e=>{
+  if(e.target.id==="f_photo"){const fs=[...e.target.files];e.target.value="";if(fs.length)addPhotos(fs);return}
+  if(e.target.dataset.pi!==undefined)editing.data.photos[+e.target.dataset.pi].type=e.target.value});
+$("#form").addEventListener("click",async e=>{
+  const del=e.target.closest("[data-del]");
+  if(del){if(del.dataset.armed!=="1"){del.dataset.armed="1";del.textContent="กดอีกครั้งเพื่อยืนยัน";return}
+    readForm();const [p]=editing.data.photos.splice(+del.dataset.del,1);
+    if(editing.exists){await S.put(editing.data);await S.delPh(p.id);await reload()}else await S.delPh(p.id);
+    buildForm();toast("ลบรูปแล้ว");return}
+  if(e.target.id==="btnDel"){$("#delZone").innerHTML=`<span>ลบเครื่องนี้และรูปทั้งหมด?</span><button type="button" class="danger" id="btnDelYes">ยืนยันลบ</button><button type="button" id="btnDelNo">ยกเลิก</button>`;return}
+  if(e.target.id==="btnDelNo"){buildForm();return}
+  if(e.target.id==="btnDelYes"){const d=editing.data;await S.del(d.id);for(const p of d.photos||[])await S.delPh(p.id).catch(()=>{});await closeEditor(false);await reload();toast("ลบเครื่องแล้ว")}
+});
+
+// ---------- boot
+(async()=>{
+  idb=await openDB();
+  if(!idb){const b=$("#banner");b.textContent="เบราว์เซอร์นี้ไม่อนุญาตให้เก็บข้อมูลถาวร (อาจเป็นโหมดส่วนตัว) ข้อมูลจะหายเมื่อปิดหน้า กด “สำรองข้อมูล” ก่อนปิดทุกครั้ง";b.hidden=false}
+  try{let seeded=false;try{seeded=localStorage.getItem("gensurvey-seeded")==="1"}catch(_){}
+    const cur=await S.all();
+    if(!cur.length&&!seeded){const now=new Date().toISOString();for(const [id,s,bld,code,x] of SEED)await S.put({id,site:s,building:bld,code,photos:[],...x,createdAt:now,updatedAt:"2000-01-01T00:00:00.000Z"});
+      try{localStorage.setItem("gensurvey-seeded","1")}catch(_){}}
+  }catch(_){}
+  await reload();
+  try{if(window.claude&&window.claude.use){downloads=await window.claude.use("downloads")}}catch(_){}
+})();
+})();
+</script>
+
+</body>
+</html>

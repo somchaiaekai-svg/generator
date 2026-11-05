@@ -89,6 +89,10 @@ legend{font-weight:700;font-size:14px;padding:0 6px}
 .ph button{font-size:12px;min-height:32px;padding:4px 8px;justify-content:center}
 .upl{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;border:1.5px dashed var(--line);border-radius:8px;min-height:150px;cursor:pointer;color:var(--muted);text-align:center;padding:8px}
 .upl:hover{border-color:var(--ink);color:var(--fg)}
+.sec-photos{grid-column:span 6;display:flex;flex-direction:column;gap:8px;border-top:1px dashed var(--line);padding-top:10px;margin-top:2px}
+.sec-ph-head{font-size:13px;font-weight:600;color:var(--muted)}
+.sec-ph-head .n{font-weight:400}
+.sec-photos .upl{min-height:110px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;z-index:40;font-size:14px;max-width:90vw}
 .confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dl{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -152,7 +156,8 @@ legend{font-weight:700;font-size:14px;padding:0 6px}
 <script>
 (function(){
 const SITES=["ทุ่งมหาเมฆ","สุวรรณภูมิ","ดอนเมือง"];
-const PHOTO_TYPES=["ภาพรวมเครื่อง","ป้ายพิกัด (Nameplate)","ป้ายพิกัด ATS","ไส้กรองอากาศ","ไส้กรองน้ำมันเครื่อง","ไส้กรองน้ำมันเชื้อเพลิง","Day tank","Storage tank","ตู้ควบคุม/ATS","อื่น ๆ"];
+const SECTION_PHOTOS={g1:["ภาพรวมเครื่อง","ป้ายพิกัด (Nameplate)"],g7:["ตู้ควบคุม/ATS","ป้ายพิกัด ATS"],g2:["ไส้กรองอากาศ"],g3:["ไส้กรองน้ำมันเครื่อง"],g4:["ไส้กรองน้ำมันเชื้อเพลิง"],g5:["Day tank","Storage tank"]};
+const PHOTO_TYPES=[...Object.values(SECTION_PHOTOS).flat(),"อื่น ๆ"];
 const F=[
  ["site","พื้นที่","g1","site",2,1],["building","อาคารที่ติดตั้ง","g1","text",2,1],["room","ตำแหน่ง/ห้อง","g1","text",2,0],
  ["code","รหัส/ชื่อเครื่อง","g1","text",2,0],["brand","ยี่ห้อเครื่อง","g1","text",2,1],["model","รุ่นเครื่อง","g1","text",2,1],
@@ -261,13 +266,20 @@ function fieldHTML(f,d){
 }
 function buildForm(){
   const d=editing.data;let html="";
-  for(const g of Object.keys(GROUPS))html+=`<fieldset><legend>${GROUPS[g]}</legend>${F.filter(f=>f[2]===g).map(f=>fieldHTML(f,d)).join("")}</fieldset>`;
-  const ps=d.photos||[];
-  html+=`<fieldset><legend>รูปถ่าย (${ps.length})</legend><div class="photos">${ps.map((p,i)=>`<div class="ph"><img data-ph="${esc(p.id)}" alt="${esc(p.type)}">
-    <select data-pi="${i}" aria-label="ประเภทรูป">${PHOTO_TYPES.map(t=>`<option ${t===p.type?"selected":""}>${t}</option>`).join("")}</select>
-    <button type="button" class="danger" data-del="${i}">ลบรูป</button></div>`).join("")}
-    <label class="upl" for="f_photo"><b>+ เพิ่มรูปถ่าย</b><span class="note">ถ่ายหรือเลือกได้หลายรูป</span></label>
-    <input id="f_photo" type="file" accept="image/*" multiple hidden></div></fieldset>`;
+  const ps=(d.photos||[]).map((p,i)=>({...p,i}));
+  const photoBlock=(sec,types,list,label)=>`<div class="sec-photos"><div class="sec-ph-head">${esc(label)} <span class="n">${list.length} รูป</span></div><div class="photos">${list.map(p=>`<div class="ph"><img data-ph="${esc(p.id)}" alt="${esc(p.type)}">
+    ${types.length>1?`<select data-pi="${p.i}" aria-label="ประเภทรูป">${types.map(t=>`<option ${t===p.type?"selected":""}>${t}</option>`).join("")}</select>`:`<span class="note">${esc(p.type)}</span>`}
+    <button type="button" class="danger" data-del="${p.i}">ลบรูป</button></div>`).join("")}
+    <label class="upl" for="ph_${sec}"><b>+ เพิ่มรูป</b><span class="note">${esc(types[0])}</span></label>
+    <input id="ph_${sec}" class="f-photo" data-type="${esc(types[0])}" type="file" accept="image/*" multiple hidden></div></div>`;
+  const used=new Set();
+  for(const g of Object.keys(GROUPS)){
+    const types=SECTION_PHOTOS[g]; let ph="";
+    if(types){types.forEach(t=>used.add(t));ph=photoBlock(g,types,ps.filter(p=>types.includes(p.type)),"รูปถ่าย"+(g==="g1"?"เครื่อง":g==="g7"?" ATS":g==="g5"?"ถังน้ำมัน":GROUPS[g]))}
+    html+=`<fieldset><legend>${GROUPS[g]}</legend>${F.filter(f=>f[2]===g).map(f=>fieldHTML(f,d)).join("")}${ph}</fieldset>`;
+  }
+  const other=ps.filter(p=>!used.has(p.type));
+  html+=`<fieldset><legend>รูปถ่ายอื่น ๆ</legend>${photoBlock("other",["อื่น ๆ",...PHOTO_TYPES.filter(t=>t!=="อื่น ๆ")],other,"รูปที่ไม่อยู่ในหมวดข้างบน")}</fieldset>`;
   if(editing.exists)html+=`<div class="confirm" id="delZone"><button type="button" class="danger" id="btnDel">ลบเครื่องนี้</button></div>`;
   $("#form").innerHTML=html;fillImgs($("#form"));
 }
@@ -290,10 +302,10 @@ async function save(){
 async function shrink(file,max,q){try{const bmp=await createImageBitmap(file);const s=Math.min(1,max/Math.max(bmp.width,bmp.height));
   const c=document.createElement("canvas");c.width=Math.round(bmp.width*s);c.height=Math.round(bmp.height*s);c.getContext("2d").drawImage(bmp,0,0,c.width,c.height);
   return await new Promise(r=>c.toBlob(b=>r(b||file),"image/jpeg",q))}catch(_){return file}}
-async function addPhotos(files){
+async function addPhotos(files,type){
   readForm();let ok=0;toast(`กำลังเพิ่ม ${files.length} รูป…`);
   for(const f of files){try{const b=await shrink(f,1600,.82);const id="p"+uid();await S.putPh(id,b);editing.added.push(id);
-    editing.data.photos.push({id,type:PHOTO_TYPES[Math.min(editing.data.photos.length,PHOTO_TYPES.length-1)]});ok++}catch(_){}}
+    editing.data.photos.push({id,type:type||"อื่น ๆ"});ok++}catch(_){}}
   if(editing.exists){editing.data.updatedAt=new Date().toISOString();await S.put(editing.data);await reload()}
   buildForm();toast(`เพิ่มรูปแล้ว ${ok} รูป${editing.exists?"":" · กดบันทึกเพื่อเก็บรายการ"}`);
 }
@@ -412,7 +424,7 @@ $("#form").addEventListener("submit",e=>{e.preventDefault();save()});
 $("#sheet").addEventListener("click",e=>{if(e.target.id==="sheet")closeEditor(true)});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#sheet").hidden)closeEditor(true)});
 $("#form").addEventListener("change",e=>{
-  if(e.target.id==="f_photo"){const fs=[...e.target.files];e.target.value="";if(fs.length)addPhotos(fs);return}
+  if(e.target.classList.contains("f-photo")){const fs=[...e.target.files];const t=e.target.dataset.type;e.target.value="";if(fs.length)addPhotos(fs,t);return}
   if(e.target.dataset.pi!==undefined)editing.data.photos[+e.target.dataset.pi].type=e.target.value});
 $("#form").addEventListener("click",async e=>{
   const del=e.target.closest("[data-del]");

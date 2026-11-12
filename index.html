@@ -258,6 +258,9 @@ const REMOTE={
   async delPh(id){try{await api("deletePhoto",{id},true)}catch(_){}},
   phURL(id){return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w800`}
 };
+// ตัดรายการรูปที่ว่าง/เสีย (null หรือไม่มี id) ออก ก่อนนำไปใช้ทุกที่
+const cleanRec=r=>{if(r)r.photos=Array.isArray(r.photos)?r.photos.filter(p=>p&&p.id):[];return r};
+for(const st of [LOCAL,REMOTE]){const f=st.all;st.all=async function(){return (await f.call(this)).map(cleanRec)}}
 let S=LOCAL; const SHARED=!!API_URL;
 const urlCache=new Map();
 async function phURL(id){if(urlCache.has(id))return urlCache.get(id);

@@ -112,6 +112,7 @@ legend{font-weight:700;font-size:14px;padding:0 6px}
     <div class="actions">
       <button id="btnAdd" class="primary" type="button">+ เพิ่มเครื่อง</button>
       <button id="btnExport" type="button">ส่งออก Excel</button>
+      <button id="btnExportNoPh" type="button">Excel (ไม่มีรูป)</button>
       <button id="btnCopy" type="button">คัดลอกตาราง</button>
     </div>
   </header>
@@ -151,7 +152,7 @@ legend{font-weight:700;font-size:14px;padding:0 6px}
     </div>
     <div id="dlArea" class="dl" hidden></div>
   </section>
-  <p class="note">ช่องที่มี <span class="req">*</span> ใช้คำนวณความครบถ้วน · รูปถูกย่อขนาดก่อนเก็บ · Excel มี 4 แผ่น: รายการเครื่อง, สรุปตามพื้นที่, สรุปไส้กรอง และรูปถ่าย (ฝังรูปย่อ)</p>
+  <p class="note">ช่องที่มี <span class="req">*</span> ใช้คำนวณความครบถ้วน · รูปถูกย่อขนาดก่อนเก็บ · Excel มี 4 แผ่น: รายการเครื่อง, สรุปตามพื้นที่, สรุปไส้กรอง และรูปถ่าย (ฝังรูปย่อ) · ปุ่ม "Excel (ไม่มีรูป)" ได้ 3 แผ่นแรกทันที</p>
 </div>
 
 <div id="sheet" class="sheet" hidden>
@@ -418,9 +419,24 @@ function copyTable(){
   try{navigator.clipboard.writeText(tsv).then(done,fallback)}catch(_){fallback()}
 }
 
-async function exportExcel(){
+// ดึงรูปพร้อมกันครั้งละหลายรูป ข้ามรูปที่โหลดไม่ได้/นานเกิน แทนการล้มทั้งไฟล์
+const PH_PARALLEL=6,PH_TIMEOUT=45000;
+const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")),ms))]);
+async function fetchThumbs(jobs,onProgress){
+  const out=new Array(jobs.length);let next=0,done=0;
+  async function worker(){while(next<jobs.length){const k=next++;
+    try{const b=await withTimeout(S.getPh(jobs[k].p.id),PH_TIMEOUT);
+      if(b){const small=await shrink(b,480,.7);out[k]=await blobToB64(small)}}catch(_){out[k]=null}
+    done++;onProgress(done,jobs.length)}}
+  await Promise.all(Array.from({length:Math.min(PH_PARALLEL,jobs.length)},worker));
+  return out;
+}
+let exporting=false;
+async function exportExcel(withPhotos=true){
+  if(exporting)return;
   if(!window.ExcelJS){toast("โหลดตัวสร้าง Excel ไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต");return}
-  const btn=$("#btnExport");btn.disabled=true;toast("กำลังสร้างไฟล์ Excel…");
+  const btns=[$("#btnExport"),$("#btnExportNoPh")],btn=withPhotos?btns[0]:btns[1],label=btn.textContent;
+  exporting=true;btns.forEach(b=>b.disabled=true);toast("กำลังสร้างไฟล์ Excel…");let skipped=0;
   try{
   const data=sorted();const wb=new ExcelJS.Workbook();wb.creator="สำรวจเครื่องกำเนิดไฟฟ้า";
   const thisBE=new Date().getFullYear()+543;const n=v=>v===""||v==null?null:Number(v);
@@ -452,17 +468,23 @@ async function exportExcel(){
   Object.values(agg).sort((x,y)=>x.t.localeCompare(y.t,"th")||x.b.localeCompare(y.b)||x.m.localeCompare(y.m)).forEach(a=>s3.addRow([a.t,a.b,a.m,a.n,a.q,[...a.s].join(", "),[...a.bl].join(", ")]));
   s3.columns.forEach((c,i)=>{c.width=[22,14,20,14,18,28,50][i]});
   // 4 photos
+  if(withPhotos){
   const s4=wb.addWorksheet("รูปถ่าย");s4.addRow(["รูปถ่ายประกอบการสำรวจ (รูปย่อ)"]).font={bold:true,size:14};s4.addRow([]);
   hdrStyle(s4.addRow(["ลำดับเครื่อง","พื้นที่","อาคาร","รหัส/ชื่อเครื่อง","ประเภทรูป","รูป"]));
   s4.columns.forEach((c,i)=>{c.width=[10,12,26,14,22,34][i]});
+  const jobs=[];data.forEach((d,i)=>(d.photos||[]).forEach(p=>jobs.push({i,d,p})));
+  const thumbs=await fetchThumbs(jobs,(n,t)=>{btn.textContent=`กำลังดึงรูป ${n}/${t}…`;toast(`กำลังดึงรูป ${n}/${t}…`)});
+  btn.textContent="กำลังสร้างไฟล์…";
   let r=4;
-  for(let i=0;i<data.length;i++){const d=data[i];for(const p of (d.photos||[])){
-    const b=await S.getPh(p.id);if(!b)continue;const small=await shrink(b,480,.7);const b64=await blobToB64(small);
-    const row=s4.addRow([i+1,d.site,d.building,d.code,p.type,""]);row.height=150;row.alignment={vertical:"top",wrapText:true};
-    const img=wb.addImage({base64:b64,extension:"jpeg"});s4.addImage(img,{tl:{col:5,row:r},ext:{width:240,height:190}});r++}}
+  jobs.forEach(({i,d,p},k)=>{
+    const row=s4.addRow([i+1,d.site,d.building,d.code,p.type,thumbs[k]?"":"(โหลดรูปไม่ได้)"]);row.height=thumbs[k]?150:20;row.alignment={vertical:"top",wrapText:true};
+    if(thumbs[k]){const img=wb.addImage({base64:thumbs[k],extension:"jpeg"});s4.addImage(img,{tl:{col:5,row:r},ext:{width:240,height:190}})}else skipped++;
+    r++});
+  }
   const buf=await wb.xlsx.writeBuffer();
-  await deliver(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),`สำรวจเครื่องกำเนิดไฟฟ้า_${stamp()}.xlsx`);
-  }catch(e){toast("สร้าง Excel ไม่สำเร็จ")}finally{btn.disabled=false}
+  await deliver(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),`สำรวจเครื่องกำเนิดไฟฟ้า_${withPhotos?"":"ไม่มีรูป_"}${stamp()}.xlsx`);
+  if(skipped)toast(`สร้างไฟล์แล้ว แต่โหลดรูปไม่ได้ ${skipped} รูป (ระบุไว้ในแผ่น "รูปถ่าย")`);
+  }catch(e){toast("สร้าง Excel ไม่สำเร็จ")}finally{exporting=false;btn.textContent=label;btns.forEach(b=>b.disabled=false)}
 }
 async function backup(){
   toast("กำลังสร้างไฟล์สำรอง…");const recs=await S.all();const photos={};
@@ -508,7 +530,8 @@ $("#tabs").addEventListener("click",e=>{const b=e.target.closest(".tab");if(b){s
 $("#q").addEventListener("input",e=>{q=e.target.value;render()});
 $("#list").addEventListener("click",e=>{const r=e.target.closest(".row");if(r)openEditor(r.dataset.id)});
 $("#btnAdd").addEventListener("click",()=>openEditor(null));
-$("#btnExport").addEventListener("click",exportExcel);
+$("#btnExport").addEventListener("click",()=>exportExcel(true));
+$("#btnExportNoPh").addEventListener("click",()=>exportExcel(false));
 $("#btnCopy").addEventListener("click",copyTable);
 $("#btnBackup").addEventListener("click",backup);
 $("#fImport").addEventListener("change",e=>{const fs=[...e.target.files];e.target.value="";if(fs.length)importFiles(fs)});

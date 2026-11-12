@@ -484,7 +484,7 @@ async function exportExcel(withPhotos=true){
   const buf=await wb.xlsx.writeBuffer();
   await deliver(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),`สำรวจเครื่องกำเนิดไฟฟ้า_${withPhotos?"":"ไม่มีรูป_"}${stamp()}.xlsx`);
   if(skipped)toast(`สร้างไฟล์แล้ว แต่โหลดรูปไม่ได้ ${skipped} รูป (ระบุไว้ในแผ่น "รูปถ่าย")`);
-  }catch(e){toast("สร้าง Excel ไม่สำเร็จ")}finally{exporting=false;btn.textContent=label;btns.forEach(b=>b.disabled=false)}
+  }catch(e){console.error("exportExcel",e);toast("สร้าง Excel ไม่สำเร็จ: "+(e&&e.message||e))}finally{exporting=false;btn.textContent=label;btns.forEach(b=>b.disabled=false)}
 }
 async function backup(){
   toast("กำลังสร้างไฟล์สำรอง…");const recs=await S.all();const photos={};

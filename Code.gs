@@ -14,7 +14,8 @@ const COLS = ['id', 'updatedAt', 'data',
   'ats_brand', 'ats_model', 'ats_rating', 'ats_serial', 'systems',
   'air_brand', 'air_model', 'air_qty', 'oil_brand', 'oil_model', 'oil_qty',
   'fuel_brand', 'fuel_model', 'fuel_qty', 'day_l', 'storage_l',
-  'surveyor', 'survey_date', 'note', 'photo_count'];
+  'surveyor', 'survey_date', 'note', 'photo_count',
+  'day_fuel', 'storage_fuel', 'load_pct'];
 
 function doGet(e) { return handle_(e && e.parameter ? e.parameter : {}); }
 function doPost(e) {
@@ -52,6 +53,8 @@ function sheet_() {
     sh = ss.insertSheet(SHEET_NAME);
     sh.getRange(1, 1, 1, COLS.length).setValues([COLS]).setFontWeight('bold');
     sh.setFrozenRows(1);
+  } else if (sh.getLastColumn() < COLS.length) {
+    sh.getRange(1, 1, 1, COLS.length).setValues([COLS]).setFontWeight('bold');
   }
   return sh;
 }

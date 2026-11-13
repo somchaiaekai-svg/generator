@@ -96,6 +96,13 @@ legend{font-weight:700;font-size:14px;padding:0 6px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;z-index:40;font-size:14px;max-width:90vw}
 .confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dl{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.calc{grid-column:span 6;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 12px;background:var(--sunk);border-radius:8px;padding:10px 12px}
+.calc>div{display:flex;flex-direction:column;min-width:0}
+.calc .k{font-size:12px;color:var(--muted)}
+.calc b{font-family:var(--mono);font-size:16px;font-variant-numeric:tabular-nums}
+.calc .warn{grid-column:1/-1;margin:0;color:var(--bad);font-size:13px;font-weight:600}
+.calc .note{grid-column:1/-1}
+@media (max-width:560px){.calc{grid-template-columns:1fr}}
 .codebox{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .codebox input{max-width:220px}
 .linkbtn{border:none;background:none;color:var(--accent);padding:0 4px;min-height:auto;font-weight:600;text-decoration:underline;font-size:13px}
@@ -132,7 +139,7 @@ legend{font-weight:700;font-size:14px;padding:0 6px}
     <div class="stat"><div class="k">จำนวนเครื่อง</div><div class="v" id="sCount">–</div></div>
     <div class="stat"><div class="k">สำรวจครบแล้ว</div><div class="v" id="sDone">–</div></div>
     <div class="stat"><div class="k">กำลังรวม</div><div class="v" id="sKva">–</div></div>
-    <div class="stat"><div class="k">ถังน้ำมันรวม (Day + Storage)</div><div class="v" id="sTank">–</div></div>
+    <div class="stat"><div class="k">น้ำมันคงเหลือรวม / ความจุถัง</div><div class="v" id="sTank">–</div></div>
   </section>
 
   <div class="toolbar">
@@ -183,12 +190,32 @@ const F=[
  ["air_brand","ยี่ห้อ","g2","text",2,1],["air_model","รุ่น/Part No.","g2","text",2,1],["air_qty","จำนวน (ชิ้น)","g2","num",2,0],
  ["oil_brand","ยี่ห้อ","g3","text",2,1],["oil_model","รุ่น/Part No.","g3","text",2,1],["oil_qty","จำนวน (ชิ้น)","g3","num",2,1],
  ["fuel_brand","ยี่ห้อ","g4","text",2,1],["fuel_model","รุ่น/Part No.","g4","text",2,1],["fuel_qty","จำนวน (ชิ้น)","g4","num",2,0],
- ["day_l","ขนาด Day tank (ลิตร)","g5","num",3,1],["storage_l","ขนาด Storage tank (ลิตร) ไม่มีให้ใส่ 0","g5","num",3,1],
+ ["day_l","ความจุ Day tank (ลิตร)","g5","num",3,1],["day_fuel","น้ำมันคงเหลือใน Day tank (ลิตร)","g5","num",3,1],
+ ["storage_l","ความจุ Storage tank (ลิตร) ไม่มีให้ใส่ 0","g5","num",3,1],["storage_fuel","น้ำมันคงเหลือใน Storage tank (ลิตร) ไม่มีให้ใส่ 0","g5","num",3,1],
+ ["load_pct","เปอร์เซ็นต์โหลดของเครื่อง (%) เครื่องสำรองที่ไม่จ่ายโหลดใส่ 0","g5","num",6,1],
  ["surveyor","ผู้สำรวจ","g6","text",2,0],["survey_date","วันที่สำรวจ","g6","date",2,0],["note","หมายเหตุ","g6","area",6,0]
 ];
-const GROUPS={g1:"ข้อมูลเครื่องกำเนิดไฟฟ้า",g7:"ตู้ ATS (Automatic Transfer Switch)",g2:"ไส้กรองอากาศ",g3:"ไส้กรองน้ำมันเครื่อง",g4:"ไส้กรองน้ำมันเชื้อเพลิง",g5:"ถังน้ำมัน",g6:"การสำรวจ"};
+const GROUPS={g1:"ข้อมูลเครื่องกำเนิดไฟฟ้า",g7:"ตู้ ATS (Automatic Transfer Switch)",g2:"ไส้กรองอากาศ",g3:"ไส้กรองน้ำมันเครื่อง",g4:"ไส้กรองน้ำมันเชื้อเพลิง",g5:"ถังน้ำมัน น้ำมันคงเหลือ และโหลด",g6:"การสำรวจ"};
 const REQ=F.filter(f=>f[5]).map(f=>f[0]);
 const NUM=new Set(F.filter(f=>f[3]==="num").map(f=>f[0]));
+// ลิตร/ชม. ต่อ kW พิกัด ที่โหลด 25/50/75/100% (datasheet เครื่อง 2,000 kVA Rehlko KD2000) · kW = kVA × 0.8 · โหลดต่ำกว่า 25% คิดที่ 25%
+const FUEL_CURVE=[[0.25,0.0775],[0.5,0.1325],[0.75,0.19],[1,0.25375]];
+const blank=v=>v===""||v==null;
+function lph(d){const kva=Number(d.kva);if(!kva||blank(d.load_pct))return null;const x=Number(d.load_pct)/100;if(!(x>0))return 0;
+  const c=Math.min(Math.max(x,.25),1);let i=0;while(i<2&&c>FUEL_CURVE[i+1][0])i++;const [x0,y0]=FUEL_CURVE[i],[x1,y1]=FUEL_CURVE[i+1];
+  return kva*0.8*(y0+(c-x0)*(y1-y0)/(x1-x0))}
+function fuelLeft(d){if(blank(d.day_fuel)&&blank(d.storage_fuel))return null;return (Number(d.day_fuel)||0)+(Number(d.storage_fuel)||0)}
+function fuelCap(d){return (Number(d.day_l)||0)+(Number(d.storage_l)||0)}
+function runtimeH(d){const r=lph(d),f=fuelLeft(d);if(r==null||f==null)return null;return r===0?Infinity:f/r}
+function runtimeText(d){const h=runtimeH(d);if(h==null)return "–";if(h===Infinity)return "ไม่ใช้น้ำมัน (โหลด 0%)";return `${h.toLocaleString("th-TH",{maximumFractionDigits:1})} ชม. (${(h/24).toLocaleString("th-TH",{maximumFractionDigits:1})} วัน)`}
+function fuelWarn(d){const w=[];if(!blank(d.day_fuel)&&!blank(d.day_l)&&Number(d.day_fuel)>Number(d.day_l))w.push("น้ำมันใน Day tank มากกว่าความจุถัง");
+  if(!blank(d.storage_fuel)&&!blank(d.storage_l)&&Number(d.storage_fuel)>Number(d.storage_l))w.push("น้ำมันใน Storage tank มากกว่าความจุถัง");
+  if(!blank(d.load_pct)&&(Number(d.load_pct)<0||Number(d.load_pct)>100))w.push("เปอร์เซ็นต์โหลดต้องอยู่ระหว่าง 0–100");return w}
+function calcHTML(d){const r=lph(d),f=fuelLeft(d),w=fuelWarn(d);
+  return `<div class="calc" id="calcBox"><div><span class="k">น้ำมันคงเหลือรวม</span><b>${f==null?"–":fmt(f)+" ลิตร"}</b><span class="k">${fuelCap(d)?`จากความจุ ${fmt(fuelCap(d))} ลิตร`:""}</span></div>
+   <div><span class="k">อัตราสิ้นเปลืองโดยประมาณ</span><b>${r==null?"–":r.toLocaleString("th-TH",{maximumFractionDigits:1})+" ลิตร/ชม."}</b></div>
+   <div><span class="k">จ่ายไฟได้ประมาณ</span><b>${runtimeText(d)}</b></div>
+   ${w.length?`<p class="warn">${w.map(esc).join(" · ")}</p>`:""}<p class="note">ประมาณจากขนาดเครื่อง (kVA × 0.8) และเปอร์เซ็นต์โหลด ตาม datasheet เครื่องดีเซลขนาด 2,000 kVA</p></div>`}
 // starting list from the user's fuel-reserve workbook and Suvarnabhumi maintenance plan
 const SEED=[
  ["tmm-p1-gen1","ทุ่งมหาเมฆ","โรงไฟฟ้า 1","Gen1",{kva:2000,note:"Storage tank โรงไฟฟ้า 1 ความจุ 10,000 ลิตร ใช้ร่วม Gen1–4"}],
@@ -309,7 +336,7 @@ function render(){
   $("#sCount").textContent=v.length;
   $("#sDone").innerHTML=`${v.filter(r=>completeness(r).pct===100).length} <small>/ ${v.length}</small>`;
   $("#sKva").innerHTML=`${fmt(v.reduce((a,r)=>a+(Number(r.kva)||0),0))} <small>kVA</small>`;
-  $("#sTank").innerHTML=`${fmt(v.reduce((a,r)=>a+(Number(r.day_l)||0)+(Number(r.storage_l)||0),0))} <small>ลิตร</small>`;
+  $("#sTank").innerHTML=`${fmt(v.reduce((a,r)=>a+(fuelLeft(r)||0),0))} <small>/ ${fmt(v.reduce((a,r)=>a+fuelCap(r),0))} ลิตร</small>`;
   const L=$("#list");
   if(!v.length){L.innerHTML=`<div class="empty">${rows.length?"ไม่พบเครื่องที่ตรงกับการค้นหา":"ยังไม่มีเครื่องในรายการ กด “+ เพิ่มเครื่อง” เพื่อเริ่มสำรวจ"}</div>`;return}
   L.innerHTML=v.map(d=>{const c=completeness(d);const ph=(d.photos||[])[0];
@@ -318,7 +345,7 @@ function render(){
       <span style="min-width:0"><span class="t1">${esc(d.building||"(ยังไม่ระบุอาคาร)")}${d.code?` · ${esc(d.code)}`:""}</span><br>
         <span class="t2"><span class="pill">${esc(d.site||"–")}</span> ${esc([d.brand,d.model].filter(Boolean).join(" ")||"ยังไม่ระบุยี่ห้อ/รุ่น")}</span></span>
       <span class="c3"><span class="kva">${d.kva?fmt(d.kva)+" kVA":"– kVA"}</span><br><span class="t2">ติดตั้ง ${esc(d.year||"–")}</span></span>
-      <span class="c4 t2">Day ${fmt(d.day_l)} ล. · Storage ${fmt(d.storage_l)} ล.<br>${(d.photos||[]).length} รูป</span>
+      <span class="c4 t2">น้ำมัน ${fuelLeft(d)==null?"–":fmt(fuelLeft(d))} / ${fuelCap(d)?fmt(fuelCap(d)):"–"} ล. · โหลด ${blank(d.load_pct)?"–":esc(d.load_pct)+"%"}<br>จ่ายไฟได้ ${runtimeText(d)} · ${(d.photos||[]).length} รูป</span>
       <span class="c5 prog"><span>${c.pct===100?"สำรวจครบ":`กรอกแล้ว ${c.n}/${c.of}`}</span><span class="bar ${c.pct===100?"done":""}"><i style="width:${c.pct}%"></i></span></span>
     </button>`}).join("");
   fillImgs(L);
@@ -346,7 +373,7 @@ function buildForm(){
   for(const g of Object.keys(GROUPS)){
     const types=SECTION_PHOTOS[g]; let ph="";
     if(types){types.forEach(t=>used.add(t));ph=photoBlock(g,types,ps.filter(p=>types.includes(p.type)),"รูปถ่าย"+(g==="g1"?"เครื่อง":g==="g7"?" ATS":g==="g5"?"ถังน้ำมัน":GROUPS[g]))}
-    html+=`<fieldset><legend>${GROUPS[g]}</legend>${F.filter(f=>f[2]===g).map(f=>fieldHTML(f,d)).join("")}${ph}</fieldset>`;
+    html+=`<fieldset><legend>${GROUPS[g]}</legend>${F.filter(f=>f[2]===g).map(f=>fieldHTML(f,d)).join("")}${g==="g5"?calcHTML(d):""}${ph}</fieldset>`;
   }
   const other=ps.filter(p=>!used.has(p.type));
   html+=`<fieldset><legend>รูปถ่ายอื่น ๆ</legend>${photoBlock("other",["อื่น ๆ",...PHOTO_TYPES.filter(t=>t!=="อื่น ๆ")],other,"รูปที่ไม่อยู่ในหมวดข้างบน")}</fieldset>`;
@@ -404,12 +431,18 @@ const stamp=()=>new Date().toISOString().slice(0,10);
 const TABLE_HEAD=["ลำดับ","พื้นที่","อาคารที่ติดตั้ง","ตำแหน่ง/ห้อง","รหัส/ชื่อเครื่อง","ยี่ห้อเครื่อง","รุ่นเครื่อง","ขนาด (kVA)","ปีที่ติดตั้ง (พ.ศ.)","อายุใช้งาน (ปี)","Serial Number เครื่อง","เครื่องยนต์","Alternator",
  "ATS ยี่ห้อ","ATS รุ่น/Model","ATS ขนาด (A)","ATS Serial Number","จ่ายไฟให้กับระบบ",
  "ไส้กรองอากาศ ยี่ห้อ","ไส้กรองอากาศ รุ่น","ไส้กรองอากาศ จำนวน","ไส้กรองน้ำมันเครื่อง ยี่ห้อ","ไส้กรองน้ำมันเครื่อง รุ่น","ไส้กรองน้ำมันเครื่อง จำนวน",
- "ไส้กรองน้ำมันเชื้อเพลิง ยี่ห้อ","ไส้กรองน้ำมันเชื้อเพลิง รุ่น","ไส้กรองน้ำมันเชื้อเพลิง จำนวน","Day tank (ลิตร)","Storage tank (ลิตร)","รวมถังน้ำมัน (ลิตร)","จำนวนรูป","ความครบถ้วน (%)","ผู้สำรวจ","วันที่สำรวจ","หมายเหตุ","แก้ไขล่าสุด"];
+ "ไส้กรองน้ำมันเชื้อเพลิง ยี่ห้อ","ไส้กรองน้ำมันเชื้อเพลิง รุ่น","ไส้กรองน้ำมันเชื้อเพลิง จำนวน",
+ "ความจุ Day tank (ลิตร)","น้ำมันคงเหลือ Day tank (ลิตร)","ความจุ Storage tank (ลิตร)","น้ำมันคงเหลือ Storage tank (ลิตร)","น้ำมันคงเหลือรวม (ลิตร)",
+ "โหลด (%)","อัตราสิ้นเปลืองโดยประมาณ (ลิตร/ชม.)","จ่ายไฟได้ประมาณ (ชม.)","จ่ายไฟได้ประมาณ (วัน)","จำนวนรูป","ความครบถ้วน (%)","ผู้สำรวจ","วันที่สำรวจ","หมายเหตุ","แก้ไขล่าสุด"];
 function tableRows(data){
   const thisBE=new Date().getFullYear()+543;const n=v=>v===""||v==null?null:Number(v);
   return data.map((d,i)=>[i+1,d.site,d.building,d.room,d.code,d.brand,d.model,n(d.kva),n(d.year),d.year?thisBE-Number(d.year):null,d.serial,d.engine,d.alternator,
     d.ats_brand,d.ats_model,n(d.ats_rating),d.ats_serial,d.systems,
-    d.air_brand,d.air_model,n(d.air_qty),d.oil_brand,d.oil_model,n(d.oil_qty),d.fuel_brand,d.fuel_model,n(d.fuel_qty),n(d.day_l),n(d.storage_l),(Number(d.day_l)||0)+(Number(d.storage_l)||0),
+    d.air_brand,d.air_model,n(d.air_qty),d.oil_brand,d.oil_model,n(d.oil_qty),d.fuel_brand,d.fuel_model,n(d.fuel_qty),
+    n(d.day_l),n(d.day_fuel),n(d.storage_l),n(d.storage_fuel),fuelLeft(d),n(d.load_pct),
+    lph(d)==null?null:Math.round(lph(d)*10)/10,
+    runtimeH(d)==null?null:runtimeH(d)===Infinity?"ไม่ใช้น้ำมัน":Math.round(runtimeH(d)*10)/10,
+    runtimeH(d)==null?null:runtimeH(d)===Infinity?"ไม่ใช้น้ำมัน":Math.round(runtimeH(d)/24*100)/100,
     (d.photos||[]).length,completeness(d).pct,d.surveyor,d.survey_date,d.note,d.updatedAt?d.updatedAt.slice(0,10):""]);
 }
 function copyTable(){
@@ -453,14 +486,17 @@ async function exportExcel(withPhotos=true){
   tableRows(data).forEach(r=>ws.addRow(r));
   ws.columns.forEach((c,i)=>{c.width=[6,12,26,16,14,14,16,10,10,9,18,16,16,14,16,10,18,36][i]||15});
   ws.autoFilter={from:{row:4,column:1},to:{row:4,column:H.length}};
-  [8,28,29,30].forEach(c=>ws.getColumn(c).numFmt="#,##0");
+  [8,28,29,30,31,32].forEach(c=>ws.getColumn(c).numFmt="#,##0");[34,35].forEach(c=>ws.getColumn(c).numFmt="#,##0.0");ws.getColumn(36).numFmt="0.00";
   // 2 by site
   const s2=wb.addWorksheet("สรุปตามพื้นที่");s2.addRow(["สรุปตามพื้นที่"]).font={bold:true,size:14};s2.addRow([]);
-  hdrStyle(s2.addRow(["พื้นที่","จำนวนเครื่อง","สำรวจครบ","กำลังรวม (kVA)","Day tank รวม (ลิตร)","Storage tank รวม (ลิตร)","รวมถังน้ำมัน (ลิตร)","จำนวนรูป"]));
+  hdrStyle(s2.addRow(["พื้นที่","จำนวนเครื่อง","สำรวจครบ","กำลังรวม (kVA)","ความจุถังรวม (ลิตร)","น้ำมันคงเหลือรวม (ลิตร)","น้ำมันคงเหลือ (%)","จ่ายไฟได้ต่ำสุด (ชม.)","เครื่องที่จ่ายไฟได้ต่ำกว่า 24 ชม.","จำนวนรูป"]));
   const sum=(a,k)=>a.reduce((s,d)=>s+(Number(d[k])||0),0);
-  const line=(nm,a)=>[nm,a.length,a.filter(d=>completeness(d).pct===100).length,sum(a,"kva"),sum(a,"day_l"),sum(a,"storage_l"),sum(a,"day_l")+sum(a,"storage_l"),a.reduce((x,d)=>x+(d.photos||[]).length,0)];
+  const line=(nm,a)=>{const cap=a.reduce((s,d)=>s+fuelCap(d),0),left=a.reduce((s,d)=>s+(fuelLeft(d)||0),0);
+    const hs=a.map(runtimeH).filter(h=>h!=null&&h!==Infinity);const mn=hs.length?Math.round(Math.min(...hs)*10)/10:null;
+    return [nm,a.length,a.filter(d=>completeness(d).pct===100).length,sum(a,"kva"),cap,left,cap?left/cap:null,mn,hs.filter(h=>h<24).length,a.reduce((x,d)=>x+(d.photos||[]).length,0)]};
   SITES.forEach(s=>s2.addRow(line(s,data.filter(d=>d.site===s))));s2.addRow(line("รวม",data)).font={bold:true};
-  s2.columns.forEach((c,i)=>{c.width=[14,12,10,14,18,20,18,10][i];if(i>=3&&i<=6)c.numFmt="#,##0"});
+  s2.columns.forEach((c,i)=>{c.width=[14,12,10,14,18,20,16,18,22,10][i];if(i>=3&&i<=5)c.numFmt="#,##0"});s2.getColumn(7).numFmt="0%";s2.getColumn(8).numFmt="#,##0.0";
+  s2.addRow([]);s2.addRow(["จ่ายไฟได้ประมาณจาก น้ำมันคงเหลือ ÷ อัตราสิ้นเปลือง (ขนาดเครื่อง × 0.8 × เปอร์เซ็นต์โหลด ตาม datasheet เครื่อง 2,000 kVA) · เครื่องโหลด 0% ไม่นับ"]);
   // 3 filters
   const s3=wb.addWorksheet("สรุปไส้กรอง");s3.addRow(["สรุปไส้กรอง (สำหรับจัดซื้อ/สำรองอะไหล่)"]).font={bold:true,size:14};
   s3.addRow(["จำนวนชิ้นต่อการเปลี่ยน 1 ครั้ง = ผลรวมจำนวนที่กรอกของทุกเครื่อง"]);s3.addRow([]);
@@ -541,6 +577,8 @@ $("#fImport").addEventListener("change",e=>{const fs=[...e.target.files];e.targe
 $("#btnClose").addEventListener("click",()=>closeEditor(true));
 $("#btnSave").addEventListener("click",save);
 $("#form").addEventListener("submit",e=>{e.preventDefault();save()});
+$("#form").addEventListener("input",e=>{if(!editing||!["kva","day_l","day_fuel","storage_l","storage_fuel","load_pct"].includes(e.target.name))return;
+  readForm();const b=$("#calcBox");if(b)b.outerHTML=calcHTML(editing.data)});
 $("#sheet").addEventListener("click",e=>{if(e.target.id==="sheet")closeEditor(true)});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#sheet").hidden)closeEditor(true)});
 $("#form").addEventListener("change",e=>{
